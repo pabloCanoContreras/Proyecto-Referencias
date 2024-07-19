@@ -1,0 +1,94 @@
+.table{
+  margin-top: 20px;
+}
+
+.table-hover tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.thead-dark th {
+  background-color: #343a40;
+  color: #fff;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.table td,
+.table th {
+  vertical-align: middle;
+}
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-alternating tbody .row-white {
+  background-color: #fff;
+}
+
+.table-alternating tbody .row-yellow {
+  background-color: #fffacd;
+}
+
+/* Responsive Styles */
+@media (max-width: 1280px) {
+  .table-responsive {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 1024px) {
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  .text-truncate {
+    max-width: 150px;
+  }
+}
+
+@media (max-width: 768px) {
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  .table th, .table td {
+    font-size: 0.9em;
+  }
+
+  .text-truncate {
+    max-width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  .table th, .table td {
+    font-size: 0.8em;
+    padding: 0.5em;
+  }
+
+  .text-truncate {
+    max-width: 80px;
+  }
+}
+
+@media (max-width: 320px) {
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  .table th, .table td {
+    font-size: 0.7em;
+    padding: 0.3em;
+  }
+
+  .text-truncate {
+    max-width: 60px;
+  }
+}
