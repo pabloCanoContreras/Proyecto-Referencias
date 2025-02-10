@@ -3,12 +3,12 @@ import React, { useState } from 'react';
 import './SearchResults.css';
 
 const SearchResults = ({ resultados }) => {
-  // Crear estados para manejar la visibilidad de las filas en cada sección
+  
   const [expandedFirst, setExpandedFirst] = useState(false);
   const [expandedSecond, setExpandedSecond] = useState(false);
   const [expandedThird, setExpandedThird] = useState(false);
 
-  // Manejadores de clics para alternar la visibilidad
+ 
   const toggleVisibilityFirst = () => {
     setExpandedFirst(!expandedFirst);
   };
@@ -86,7 +86,7 @@ const SearchResults = ({ resultados }) => {
         <tbody>
           {expandedThird && resultados.map((resultado, index) => (
             <tr key={index} className={index % 2 === 0 ? 'row-white' : 'row-yellow'}>
-              <td className="text-truncate">{resultado.abstract}</td>
+              <td className=".abstract-content">{resultado.abstract}</td>
             </tr>
           ))}
         </tbody>

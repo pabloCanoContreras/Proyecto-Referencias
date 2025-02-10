@@ -7,7 +7,36 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+
+# Back
+back-flask/*.crossref
+back-flask/*.scopus
+back-flask/config.py
+back-flask/app/*
+back-flask/app
+back-flask/gephi/*
+back-flask/gephi
+back-flask/impacto-informe/*.csv
+back-flask/impacto-informe/*
+back-flask/impacto-informe
+back-flask/mapas
+back-flask/__pycache__
+back-flask/.venv
+back-flask/ranking
+back-flask/requirements.txt
+back-flask/.*.*
+
+# Front
+front/node_modules
+
+
+# Src
+
+
+
+
 node_modules
+package-lock.json
 dist
 dist-ssr
 *.local

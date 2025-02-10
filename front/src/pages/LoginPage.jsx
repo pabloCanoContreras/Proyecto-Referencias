@@ -1,58 +1,126 @@
 import { useEffect } from "react";
-import { useForm } from 'react-hook-form';
+import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Label } from "../components/ui/Label";
 import { useAuth } from "../context/AuthContext";
 
-
 function LoginPage() {
-    const { register, handleSubmit, formState: { errors }, } = useForm();
-    const { signin, errors: loginErrors, isAuthenticated } = useAuth();
-    const navigate = useNavigate();
-    const onSubmit = (data) => signin(data);
-    useEffect(() => {
-      if (isAuthenticated) {
-        navigate("/searcher");
-      }
-    }, [isAuthenticated]);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
+  const { signin, errors: loginErrors, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
+  const onSubmit = (data) => signin(data);
 
-    return (
-        <div className="h-[calc(100vh-100px)] flex items-center justify-center">
-          <Card>
-            {loginErrors.map((error, i) => (
-              <Message message={error} key={i} />
-            ))}
-            <h1 className="text-2xl font-bold">Login</h1>
-    
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <Label htmlFor="email">Email:</Label>
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/searcher");
+    }
+  }, [isAuthenticated, navigate]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-300">
+      <div className="w-full h-full flex items-center justify-center p-6">
+        <div className="bg-white shadow-2xl rounded-lg w-full max-w-lg p-10">
+          {/* Encabezado */}
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-extrabold text-gray-800">
+              Bienvenido
+            </h1>
+            <p className="text-gray-600 mt-2">
+              Inicia sesión para acceder a tu cuenta
+            </p>
+          </div>
+
+          {/* Mensajes de Error */}
+          {loginErrors.length > 0 && (
+            <div className="mb-4">
+              {loginErrors.map((error, i) => (
+                <p
+                  key={i}
+                  className="text-sm text-red-600 bg-red-100 p-2 rounded-md"
+                >
+                  {error}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Formulario */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            {/* Campo Email */}
+            <div>
+              <Label htmlFor="email">Correo Electrónico:</Label>
               <Input
-                label="Write your email"
+                id="email"
                 type="email"
                 name="email"
                 placeholder="youremail@domain.tld"
-                {...register("email", { required: true })}
+                {...register("email", { required: "El correo es obligatorio" })}
+                className={`mt-1 ${
+                  errors.email ? "border-red-500" : "border-gray-300"
+                } w-full`}
               />
-              <p>{errors.email?.message}</p>
-    
-              <Label htmlFor="password">Password:</Label>
+              {errors.email && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.email.message}
+                </p>
+              )}
+            </div>
+
+            {/* Campo Contraseña */}
+            <div>
+              <Label htmlFor="password">Contraseña:</Label>
               <Input
+                id="password"
                 type="password"
                 name="password"
-                placeholder="Write your password"
-                {...register("password", { required: true, minLength: 6 })}
+                placeholder="Escribe tu contraseña"
+                {...register("password", {
+                  required: "La contraseña es obligatoria",
+                  minLength: {
+                    value: 6,
+                    message: "La contraseña debe tener al menos 6 caracteres",
+                  },
+                })}
+                className={`mt-1 ${
+                  errors.password ? "border-red-500" : "border-gray-300"
+                } w-full`}
               />
-              <p>{errors.password?.message}</p>
-    
-              <Button>Login</Button>
-            </form>
-          </Card>
+              {errors.password && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.password.message}
+                </p>
+              )}
+            </div>
+
+            {/* Botón de Iniciar Sesión */}
+            <Button className="w-full py-3 bg-blue-600 text-white font-medium rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all">
+              Iniciar sesión
+            </Button>
+          </form>
+
+          {/* Pie de Página */}
+          <div className="text-center mt-6">
+            <p className="text-sm text-gray-600">
+              ¿No tienes una cuenta?{" "}
+              <a
+                href="/register"
+                className="text-blue-600 hover:underline hover:text-blue-800"
+              >
+                Regístrate aquí
+              </a>
+            </p>
+          </div>
         </div>
-      );
+      </div>
+    </div>
+  );
 }
 
 export default LoginPage;

@@ -4,25 +4,25 @@ import React from 'react';
 
 function HomePage() {
   return (
-    <section className="bg-gray-100 min-h-screen flex flex-col justify-center items-center p-6">
-      <header className="bg-white p-6 md:p-10 rounded-lg shadow-lg text-center max-w-4xl w-full">
-        <FontAwesomeIcon icon={faGraduationCap} className="text-blue-900 text-4xl md:text-5xl mb-4 -mt-6"/>
-        <h1 className="text-3xl md:text-4xl font-bold text-blue-900">Universidad de Alcalá</h1>
-        <h2 className="text-xl md:text-2xl font-semibold text-gray-700 mt-2">Trabajo de Fin de Grado</h2>
-        <p className="text-md md:text-lg text-gray-600 mt-4">
+    <section className="bg-light min-vh-100 d-flex flex-column justify-content-center align-items-center p-4">
+      <header className="bg-white p-5 rounded-3 shadow-lg text-center w-100" style={{ maxWidth: '600px' }}>
+        <div className="mb-4">
+          <FontAwesomeIcon icon={faGraduationCap} className="text-primary" style={{ fontSize: '3rem' }} />
+        </div>
+        <h1 className="display-5 text-primary fw-bold">Universidad de Alcalá</h1>
+        <h2 className="h4 text-secondary fw-semibold mt-2">Trabajo de Fin de Grado</h2>
+        <p className="text-muted mt-3">
           Investigación de Referencias Bibliográficas
         </p>
-        <p className="text-sm md:text-md text-gray-500 mt-2">
+        <p className="text-secondary mt-2 small">
           Bienvenido al portal web de tu TFG
         </p>
       </header>
-      <footer className="mt-10 text-center text-gray-600">
-        <p className="text-xs md:text-sm">&copy; 2024 Universidad de Alcalá. Todos los derechos reservados.</p>
+      <footer className="mt-5 text-center text-muted small">
+        &copy; 2024 Universidad de Alcalá. Todos los derechos reservados.
       </footer>
     </section>
   );
 }
 
 export default HomePage;
-
-
