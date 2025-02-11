@@ -232,7 +232,7 @@ def search_and_rank():
                         for article_data in articles:
                             if isinstance(article_data, dict) and "article" in article_data:
                                 article_obj = article_data["article"]
-                                print("Article obj:",article_obj)
+                                #print("Article obj:",article_obj)
                                 # Extraer valores
                                 title = getattr(article_obj, "title", "Sin título")
                                 score = article_data.get("score", 0)  
@@ -243,13 +243,32 @@ def search_and_rank():
                                 pub_year = pub_date.year if pub_date and hasattr(pub_date, "year") else None
                                 citation_count = getattr(article_obj, "is-referenced-by-count", "Sin título")
 
-                                print(f"Título: {title}, Score: {score}, Publisher: {publisher}, Año: {pub_year}")
+                                authors = []
+
+                                if hasattr(article_obj, "authors") and article_obj.authors:
+                                    for author in article_obj.authors:
+                                        given_name = getattr(author, "given", None)
+                                        family_name = getattr(author, "family", None)
+                                        full_name = f"{given_name or ''} {family_name or ''}".strip()
+
+                                        if full_name:  
+                                            authors.append(full_name)
+                                        elif hasattr(author, "name") and author.name:
+                                            authors.append(author.name)
+                                        else:
+                                            authors.append("Autor desconocido")
+
+                                # **Evitar el error con NoneType**
+                                    authors_str = ", ".join(filter(None, authors)) if authors else "Autores no disponibles"
+
+                                #print(f"Título: {title}, Score: {score}, Publisher: {publisher}, Año: {pub_year}")
 
                                 # ✅ Agregar artículo filtrado a la lista de CrossRef
                                 filtered_articles.append({
                                     "title": title,
                                     "citation_count": citation_count,  
                                     "publication_year": pub_year or "Desconocido",
+                                    "authors": authors_str,
                                     "h_index": "N/A",
                                     "keywords": "No disponibles",
                                     "source": "crossref"  # ✅ Indicar la fuente
@@ -267,7 +286,7 @@ def search_and_rank():
                 results[source] = final_articles  
 
         # ✅ Mostrar en consola los resultados de ambas fuentes
-        print("📌 Artículos finales SCOPUS:", results.get("scopus", []))
+        #print("📌 Artículos finales SCOPUS:", results.get("scopus", []))
         #print("📌 Artículos finales CROSSREF:", results.get("crossref", []))
 
         return jsonify(results)
