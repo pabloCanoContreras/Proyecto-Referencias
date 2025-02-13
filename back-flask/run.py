@@ -241,7 +241,7 @@ def search_and_rank():
                                 # Extraer fecha de publicación
                                 pub_date = getattr(article_obj, "publication_date", None)
                                 pub_year = pub_date.year if pub_date and hasattr(pub_date, "year") else None
-                                citation_count = getattr(article_obj, "is-referenced-by-count", "Sin título")
+                                citation_count = getattr(article_obj, "citation_count", "Sin título")
 
                                 authors = []
 
@@ -287,7 +287,7 @@ def search_and_rank():
 
         # ✅ Mostrar en consola los resultados de ambas fuentes
         #print("📌 Artículos finales SCOPUS:", results.get("scopus", []))
-        #print("📌 Artículos finales CROSSREF:", results.get("crossref", []))
+        print("📌 Artículos finales CROSSREF:", results.get("crossref", []))
 
         return jsonify(results)
 
