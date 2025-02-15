@@ -81,7 +81,7 @@ const SearcherPage = () => {
   return (
     <div className="container mt-5">
       <div className="card shadow-sm p-4">
-        <h3 className="mb-4 text-center">Ranking</h3>
+        <h3 className="mb-4 text-center">Búsqueda</h3>
 
         {/* Usar SearchForm para manejar el formulario */}
         <SearchForm

@@ -22,6 +22,7 @@ const SearchForm = ({ params, setParams, onSearch, loading }) => {
         >
           <option value="title">Título</option>
           <option value="keywords">Palabras Clave</option>
+          <option value="author">Autor</option>
         </select>
       </div>
       <div className="col-md-3">
@@ -33,6 +34,7 @@ const SearchForm = ({ params, setParams, onSearch, loading }) => {
           name="query"
           value={params.query}
           onChange={handleChange}
+          placeholder="Ingrese título, palabras clave o autor"
         />
       </div>
       <div className="col-md-2">

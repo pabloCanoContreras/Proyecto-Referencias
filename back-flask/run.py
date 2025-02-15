@@ -147,7 +147,7 @@ def search_and_rank():
         # Obtener parámetros de la solicitud
         data = request.get_json()
         busqueda = data.get('busqueda', '')
-        tipo_busqueda = data.get('tipoBusqueda', 'default')
+        tipo_busqueda = data.get('tipoBusqueda', 'title')  # Ahora puede ser "title" o "author"
         fecha_inicio = data.get('fechaInicio', None)
         fecha_fin = data.get('fechaFin', None)
         sources = data.get('sources', ['scopus', 'crossref'])  # Fuentes seleccionadas
@@ -159,15 +159,21 @@ def search_and_rank():
         except ValueError:
             return jsonify({"error": "Las fechas deben ser números válidos"}), 400
 
-        # Construir la consulta
-        query = f"{tipo_busqueda}:{busqueda}" if tipo_busqueda != "default" else busqueda
+        # Ajustar la consulta según el tipo de búsqueda
+        query = busqueda  # Por defecto es título
+        search_type = "title"  # Valor por defecto
+
+        if tipo_busqueda.lower() == "author":
+            search_type = "author"  # Especificar búsqueda por autor
+        
+        elif tipo_busqueda.lower() == "keywords":
+            search_type = "keywords"
+
         results = {"scopus": [], "crossref": []}  # ✅ Diccionario con listas separadas
 
         for source in sources:
             if source in ['scopus', 'crossref']:
-                articles = lit_study.search_and_rank(query=query, source=source)
-
-                #print(f"Valores de los artículos para {source}: {articles}")
+                articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type)
 
                 filtered_articles = []  # ✅ Lista específica para cada fuente
 
@@ -189,7 +195,7 @@ def search_and_rank():
                             citation_count = getattr(article_obj, 'citedby_count', 0)
                             keywords = getattr(article_obj, 'authkeywords', 'No disponibles')
                             journal_h_index = [{"year": entry.year, "citescore": entry.citescore} 
-                            for entry in (article.get("journal_h_index") or [])  # ✅ Evita errores si es None
+                            for entry in (article.get("journal_h_index") or [])  
                             ]
                             scimago_rank = article.get('scimago_rank', 'No disponibles')
                             snip =  article.get('snip', 'No disponibles')
@@ -225,14 +231,14 @@ def search_and_rank():
                                     "scimago_rank": scimago_rank,
                                     "doi": doi,
                                     "snip": snip,
-                                    "source": "scopus"  # ✅ Indicar la fuente
+                                    "source": "scopus"  
                                 })
 
                     elif source == "crossref":
                         for article_data in articles:
                             if isinstance(article_data, dict) and "article" in article_data:
                                 article_obj = article_data["article"]
-                                #print("Article obj:",article_obj)
+
                                 # Extraer valores
                                 title = getattr(article_obj, "title", "Sin título")
                                 score = article_data.get("score", 0)  
@@ -244,7 +250,6 @@ def search_and_rank():
                                 citation_count = getattr(article_obj, "citation_count", "Sin título")
 
                                 authors = []
-
                                 if hasattr(article_obj, "authors") and article_obj.authors:
                                     for author in article_obj.authors:
                                         given_name = getattr(author, "given", None)
@@ -258,10 +263,7 @@ def search_and_rank():
                                         else:
                                             authors.append("Autor desconocido")
 
-                                # **Evitar el error con NoneType**
                                     authors_str = ", ".join(filter(None, authors)) if authors else "Autores no disponibles"
-
-                                #print(f"Título: {title}, Score: {score}, Publisher: {publisher}, Año: {pub_year}")
 
                                 # ✅ Agregar artículo filtrado a la lista de CrossRef
                                 filtered_articles.append({
@@ -271,7 +273,7 @@ def search_and_rank():
                                     "authors": authors_str,
                                     "h_index": "N/A",
                                     "keywords": "No disponibles",
-                                    "source": "crossref"  # ✅ Indicar la fuente
+                                    "source": "crossref"  
                                 })
 
                 # ✅ Filtrar artículos por fecha si corresponde
@@ -285,9 +287,12 @@ def search_and_rank():
                 # ✅ Guardar artículos en la lista correspondiente
                 results[source] = final_articles  
 
-        # ✅ Mostrar en consola los resultados de ambas fuentes
-        #print("📌 Artículos finales SCOPUS:", results.get("scopus", []))
-        print("📌 Artículos finales CROSSREF:", results.get("crossref", []))
+        return jsonify(results)
+
+    except Exception as e:
+        print("❌ Error en el backend:", str(e))
+        return jsonify({"error": str(e)}), 500  
+
 
         return jsonify(results)
 
