@@ -173,7 +173,7 @@ def search_and_rank():
 
         for source in sources:
             if source in ['scopus', 'crossref']:
-                articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type)
+                articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type) or []
 
                 filtered_articles = []  # ✅ Lista específica para cada fuente
 

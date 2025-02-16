@@ -91,7 +91,7 @@ const ResultsTable = ({ results }) => {
   };
 
   const [citationGraph, setCitationGraph] = useState(null);
-  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const [tooltipPosition, setTooltipPosition] = useState({ top: "50%", left: "50%" });
 
   const fetchCitationGraph = async (title, event) => {
     setTooltipPosition({ top: event.clientY + 10, left: event.clientX + 10 });
@@ -168,7 +168,7 @@ const ResultsTable = ({ results }) => {
                       .map((article, index) => (
                         <TableRow hover key={index}>
                           <TableCell
-                            onMouseEnter={(event) => fetchCitationGraph(article.title, event)}
+                            onClick={(event) => fetchCitationGraph(article.title, event)}
                             onMouseLeave={clearCitationGraph}
                             style={{ color: "blue", cursor: "pointer", textDecoration: "underline" }}
                           >
@@ -249,8 +249,8 @@ const ResultsTable = ({ results }) => {
               </button>
             </div>
             {citationGraph && (
-              <div style={{ position: "absolute", top: tooltipPosition.top, left: tooltipPosition.left, backgroundColor: "white", border: "1px solid gray", padding: "10px", boxShadow: "2px 2px 10px rgba(0,0,0,0.2)", zIndex: 1000 }}>
-                <img src={citationGraph} alt="Grafo de citas" style={{ width: "300px" }} />
+              <div style={{ position: "fixed", top: tooltipPosition.top, left: tooltipPosition.left, backgroundColor: "white", border: "1px solid gray", padding: "10px", boxShadow: "2px 2px 10px rgba(0,0,0,0.2)", zIndex: 1000 }}>
+                <img src={citationGraph} alt="Grafo de citas" style={{ maxWidth: "80vw", maxHeight: "80vh" }} />
               </div>
             )}
           </div>
