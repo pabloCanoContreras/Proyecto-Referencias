@@ -16,6 +16,7 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
+from pyvis.network import Network
 import io
 from datetime import datetime
 from pybliometrics.scopus import AuthorRetrieval, ScopusSearch, SerialTitle
@@ -373,82 +374,70 @@ def wordcloud():
 
     return send_file(img, mimetype='image/png', as_attachment=True, download_name='wordcloud.png')
 
-def build_citation_graph(documents):
-    """
-    Crea un grafo de citas a partir de los documentos.
-    """
-    G = nx.DiGraph()
-    
-    for doc in documents:
-        main_id = doc.get("eid")
-        pub_date = doc.get("coverDate", "Fecha desconocida")
-        
-        if main_id:
-            G.add_node(main_id, title=doc.get("title", ""), pub_date=pub_date)
-            
-            for ref in doc.get("ref_docs", []):
-                ref_id = ref.get("id")
-                ref_pub_date = ref.get("pub_date", "Fecha desconocida")
-                
-                if ref_id:
-                    G.add_node(ref_id, title=ref.get("title", ""), pub_date=ref_pub_date)
-                    G.add_edge(main_id, ref_id)
-    return G
+
 
 def build_citation_graph(documents):
     """
-    Crea un grafo de citas a partir de los documentos.
+    Crea un grafo de citas a partir de los documentos, descartando nodos con pub_date None.
     """
     G = nx.DiGraph()
 
     for doc in documents:
-        main_id = doc.get("eid")
-        pub_date = doc.get("coverDate", "Fecha desconocida")
+        main_title = doc.get("title", "Título desconocido")
+        G.add_node(main_title, label="Título", title=main_title, color="red", size=20)
 
-        if main_id:
-            G.add_node(main_id, title=doc.get("title", ""), pub_date=pub_date)
+        for ref in doc.get("ref_docs", []):
+            ref_title = ref.get("title", "Título desconocido")
+            ref_pub_date = ref.get("pub_date", None)
 
-            for ref in doc.get("ref_docs", []):
-                ref_id = ref.get("id")
-                ref_pub_date = ref.get("pub_date", "Fecha desconocida")
+            if ref_pub_date:
+                ref_label = "Título"
+                ref_hover = f"{ref_title} ({ref_pub_date})"
 
-                if ref_id:
-                    G.add_node(ref_id, title=ref.get("title", ""), pub_date=ref_pub_date)
-                    G.add_edge(main_id, ref_id)
+                G.add_node(ref_title, label=ref_label, title=ref_hover, color="blue", size=15)
+                G.add_edge(main_title, ref_title)
+
     return G
 
 def plot_citation_graph(G):
     """
-    Dibuja el grafo de citas y lo devuelve en formato base64.
+    Crea un grafo interactivo con pyvis donde los nodos muestran "Título"
+    pero revelan el nombre completo al pasar el mouse.
     """
-    plt.figure(figsize=(10, 5))
-    pos = nx.spring_layout(G, k=0.2, iterations=20)
-    nx.draw_networkx_nodes(G, pos, node_size=200, node_color="skyblue", alpha=0.7)
-    nx.draw_networkx_edges(G, pos, arrowstyle="->", arrowsize=20, edge_color="gray", alpha=0.7)
+    net = Network(height="700px", width="100%", directed=True)
+    net.toggle_physics(True)
 
-    # Etiquetas personalizadas con la fecha de publicación
-    labels = {node: data['pub_date'] for node, data in G.nodes(data=True)}
-    nx.draw_networkx_labels(G, pos, labels=labels, font_size=8, font_color="black", font_weight="bold", alpha=0.7)
+    for node, data in G.nodes(data=True):
+        net.add_node(
+            node,
+            label=data["label"],   # Solo "Título"
+            title=data["title"],   # Texto completo al pasar el mouse
+            color=data["color"],
+            size=data["size"]
+        )
 
-    plt.title("Mapa de Citas")
-    plt.axis('off')
+    for edge in G.edges():
+        net.add_edge(edge[0], edge[1])
 
-    # Guardar como imagen en base64
-    img = io.BytesIO()
-    plt.savefig(img, format='png', bbox_inches='tight')
-    plt.close()
-    img.seek(0)
-    graph_base64 = base64.b64encode(img.read()).decode('utf-8')
-    return graph_base64
+    # Guardar el grafo en un archivo HTML
+    graph_path = "citation_graph.html"
+    net.save_graph(graph_path)
+
+    # Convertir HTML a base64 para enviarlo en la API
+    with open(graph_path, "r", encoding="utf-8") as f:
+        graph_html = f.read()
+
+    return base64.b64encode(graph_html.encode()).decode("utf-8")
+
 
 @app.route('/generate_citation_graph', methods=['POST'])
 def generate_citation_graph():
     """
-    Endpoint para generar el grafo de citas y devolverlo como imagen.
+    Endpoint para generar el grafo de citas y devolverlo como HTML interactivo.
     """
     data = request.get_json()
     query = data.get('query', '')
-    limit = int(data.get('limit', 2))  # Limita la cantidad de referencias
+    limit = int(data.get('limit', 4))  # Limita la cantidad de referencias
 
     if not query:
         return jsonify({"status": "error", "message": "No se proporcionó una consulta"}), 400
@@ -466,13 +455,16 @@ def generate_citation_graph():
         # Crear el grafo de citas
         G = build_citation_graph(documents)
 
-        # Convertir el grafo a imagen base64
+        # Convertir el grafo a HTML interactivo en base64
         citation_graph_base64 = plot_citation_graph(G)
 
-        return jsonify({"status": "success", "image": citation_graph_base64})
+        return jsonify({"status": "success", "graph_html": citation_graph_base64})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
 
 @app.route('/')
 def serve_react():

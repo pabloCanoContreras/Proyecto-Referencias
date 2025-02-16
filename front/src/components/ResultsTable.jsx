@@ -93,25 +93,31 @@ const ResultsTable = ({ results }) => {
   const [citationGraph, setCitationGraph] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ top: "50%", left: "50%" });
 
-  const fetchCitationGraph = async (title, event) => {
-    setTooltipPosition({ top: event.clientY + 10, left: event.clientX + 10 });
-
+  const fetchCitationGraph = async (title) => {
     try {
       const response = await fetch("http://localhost:5000/generate_citation_graph", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: title, limit: 5 }),
+        body: JSON.stringify({ query: title }),
       });
 
       const data = await response.json();
-      setCitationGraph(data.status === "success" ? `data:image/png;base64,${data.image}` : null);
+
+      if (data.status === "success") {
+        // Crear un blob con el contenido HTML
+        const blob = new Blob([atob(data.graph_html)], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+
+        // Abrir en nueva pestaña
+        window.open(url, "_blank");
+      } else {
+        alert("Error generando el grafo: " + data.message);
+      }
     } catch (error) {
       console.error("Error al obtener el gráfico de citas:", error);
-      setCitationGraph(null);
+      alert("No se pudo generar el grafo.");
     }
   };
-
-  const clearCitationGraph = () => setCitationGraph(null);
 
   if (!Object.keys(results).length) {
     return <p className="text-muted mt-4">No hay resultados para mostrar.</p>;
@@ -168,10 +174,8 @@ const ResultsTable = ({ results }) => {
                       .map((article, index) => (
                         <TableRow hover key={index}>
                           <TableCell
-                            onClick={(event) => fetchCitationGraph(article.title, event)}
-                            onMouseLeave={clearCitationGraph}
-                            style={{ color: "blue", cursor: "pointer", textDecoration: "underline" }}
-                          >
+                            onClick={() => fetchCitationGraph(article.title)}
+                            style={{ color: "blue", cursor: "pointer", textDecoration: "underline" }}>
                             {article.title}
                           </TableCell>
                           <TableCell>{article.publication_year}</TableCell>
@@ -203,7 +207,7 @@ const ResultsTable = ({ results }) => {
                               <TableCell>{article.snip || "No disponible"}</TableCell>
                               <TableCell>
                                 {article.doi ? (
-                                  <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noopener noreferrer">
+                                  <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "blue" }}>
                                     {article.doi}
                                   </a>
                                 ) : (
