@@ -19,6 +19,8 @@ matplotlib.use('Agg')
 from pyvis.network import Network
 import io
 from datetime import datetime
+import json
+from pybliometrics.scopus import AbstractRetrieval
 from pybliometrics.scopus import AuthorRetrieval, ScopusSearch, SerialTitle
 from mapas.mapa_referencias_final import build_citation_graph, plot_citation_graph, get_refs_scopus
 
@@ -375,47 +377,146 @@ def wordcloud():
     return send_file(img, mimetype='image/png', as_attachment=True, download_name='wordcloud.png')
 
 
+def get_author_from_scopus(doi=None, scopus_id=None):
+    """
+    Intenta obtener el apellido del primer autor de un documento en Scopus,
+    usando DOI o Scopus ID. Si no se encuentra, devuelve 'Desconocido'.
+    """
+    try:
+        if doi:
+            abstract = AbstractRetrieval(doi=doi)
+        elif scopus_id:
+            abstract = AbstractRetrieval(scopus_id)
+        else:
+            return "Desconocido"
+
+        # Extraer autores
+        if abstract.authors and isinstance(abstract.authors, list):
+            first_author = abstract.authors[0].surname  # Apellido del primer autor
+            return first_author
+        else:
+            return "Desconocido"
+    except Exception as e:
+        print(f"⚠️ Error obteniendo autor desde Scopus: {e}")
+        return "Desconocido"
+
+
+def extract_last_name(full_name):
+    """
+    Extrae el apellido del autor de un string completo.
+    Si el nombre tiene un guion, lo conserva (ejemplo: "Lopez-Carmona M.A.").
+    """
+    if not full_name:
+        return "Desconocido"
+    
+    parts = full_name.split()  # Divide por espacios
+    last_name = parts[0]  # Toma la primera parte (puede incluir guion)
+
+    return last_name
+
+def extract_year(date_string):
+    """
+    Extrae el año de una fecha en formato 'Mes Año' o 'YYYY-MM-DD'.
+    Si la fecha es None o vacía, devuelve 'Desconocido'.
+    """
+    if not date_string:
+        return "Desconocido"
+    
+    parts = date_string.split()  # Divide por espacios
+    year = parts[-1]  # Toma la última parte (que debería ser el año)
+
+    return year if year.isdigit() else "Desconocido"
+
+
 
 def build_citation_graph(documents):
     """
-    Crea un grafo de citas a partir de los documentos, descartando nodos con pub_date None.
+    Crea un grafo de citas a partir de los documentos, usando 'Apellido - Año' en los nodos.
     """
     G = nx.DiGraph()
 
     for doc in documents:
-        main_title = doc.get("title", "Título desconocido")
-        G.add_node(main_title, label="Título", title=main_title, color="red", size=20)
+        print("\n🔹 Documento principal:", doc)  # ✅ Depuración
 
+        # Obtener el apellido del autor principal
+        creator = doc.get("creator", "")  
+        main_author = extract_last_name(creator)
+
+        # Obtener el año de publicación desde 'coverDisplayDate'
+        cover_display_date = doc.get("coverDisplayDate", "")
+        main_pub_year = extract_year(cover_display_date)
+
+        # Etiqueta del nodo principal
+        main_label = f"{main_author} - {main_pub_year}"
+
+        G.add_node(main_label, label=main_label, title=doc.get("title", "Título desconocido"),
+                   color="red", size=20)
+
+        # Procesar referencias
         for ref in doc.get("ref_docs", []):
-            ref_title = ref.get("title", "Título desconocido")
-            ref_pub_date = ref.get("pub_date", None)
+            print("\n   🔹 Referencia encontrada:", ref)  # ✅ Depuración
 
-            if ref_pub_date:
-                ref_label = "Título"
-                ref_hover = f"{ref_title} ({ref_pub_date})"
+            # Intentar obtener el autor de la referencia
+            ref_author = "Desconocido"
 
-                G.add_node(ref_title, label=ref_label, title=ref_hover, color="blue", size=15)
-                G.add_edge(main_title, ref_title)
+            # Si hay una lista de autores, extraer el apellido del primero
+            ref_authors = ref.get("authors", [])  
+            if isinstance(ref_authors, list) and ref_authors:
+                ref_author = extract_last_name(ref_authors[0])
+            else:
+                # Si no hay autores en los datos originales, intentar obtener desde Scopus
+                ref_author = get_author_from_scopus(doi=ref.get("doi"), scopus_id=ref.get("id"))
+
+            # Obtener el año de publicación de la referencia
+            ref_pub_date = ref.get("pub_date", "Desconocido")
+            ref_pub_year = str(ref_pub_date)[:4] if ref_pub_date else "Desconocido"
+
+            # Etiqueta de la referencia
+            ref_label = f"{ref_author} - {ref_pub_year}"
+
+            if ref_pub_year != "Desconocido":
+                G.add_node(ref_label, label=ref_label, title=ref.get("title", "Título desconocido"),
+                           color="blue", size=15)
+                G.add_edge(main_label, ref_label)
 
     return G
+
 
 def plot_citation_graph(G):
     """
     Crea un grafo interactivo con pyvis donde los nodos muestran "Título"
-    pero revelan el nombre completo al pasar el mouse.
+    pero revelan el nombre completo al pasar el mouse, junto con autores, año y revista.
     """
     net = Network(height="700px", width="100%", directed=True)
     net.toggle_physics(True)
 
+    # Añadir nodos con información adicional para mostrar al hacer hover
     for node, data in G.nodes(data=True):
+        # Obtener la información necesaria del nodo (Título, Autor, Año, Revista)
+        label_parts = data["label"].split(" - ")  # Suponiendo que la etiqueta está en formato "Autor - Año"
+        author = label_parts[0] if len(label_parts) > 1 else "Desconocido"
+        year = label_parts[1] if len(label_parts) > 1 else "Desconocido"
+        title = data.get("title", "Título desconocido")
+        source_title = data.get("source_title", "Revista desconocida")  # Supongamos que tienes el nombre de la revista
+
+        # Crear un texto más completo para el hover, que incluye título, autores, año y revista
+        hover_text = f"""
+            Título: {title}
+            Autores: {author}
+            Año: {year}
+            Revista:{source_title}
+        """
+
+        # Añadir el nodo a la red, con el texto completo para el hover
         net.add_node(
             node,
             label=data["label"],   # Solo "Título"
-            title=data["title"],   # Texto completo al pasar el mouse
+            title=hover_text,  # Información completa en el hover
             color=data["color"],
             size=data["size"]
         )
 
+    # Añadir los bordes (aristas) entre los nodos
     for edge in G.edges():
         net.add_edge(edge[0], edge[1])
 
@@ -423,10 +524,11 @@ def plot_citation_graph(G):
     graph_path = "citation_graph.html"
     net.save_graph(graph_path)
 
-    # Convertir HTML a base64 para enviarlo en la API
+    # Leer el archivo HTML generado por pyvis
     with open(graph_path, "r", encoding="utf-8") as f:
         graph_html = f.read()
 
+    # Convertir el HTML a base64 para enviarlo en una API o para usarlo de otra manera
     return base64.b64encode(graph_html.encode()).decode("utf-8")
 
 
