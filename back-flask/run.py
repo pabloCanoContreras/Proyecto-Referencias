@@ -429,7 +429,7 @@ def extract_year(date_string):
 
 
 
-def build_citation_graph(documents):
+def build_citation_graph(documents): 
     """
     Crea un grafo de citas a partir de los documentos, usando 'Apellido - Año' en los nodos.
     """
@@ -442,6 +442,9 @@ def build_citation_graph(documents):
         creator = doc.get("creator", "")  
         main_author = extract_last_name(creator)
 
+        doi = doc.get("doi", "")
+        url = f"https://doi.org/{doi}" if doi else "#"
+
         # Obtener el año de publicación desde 'coverDisplayDate'
         cover_display_date = doc.get("coverDisplayDate", "")
         main_pub_year = extract_year(cover_display_date)
@@ -449,8 +452,27 @@ def build_citation_graph(documents):
         # Etiqueta del nodo principal
         main_label = f"{main_author} - {main_pub_year}"
 
-        G.add_node(main_label, label=main_label, title=doc.get("title", "Título desconocido"),
-                   color="red", size=20)
+        # Obtener información de la revista
+        journal_name = doc.get("publicationName", "Revista desconocida")
+        volume = doc.get("volume", "No disponible")
+        issue = doc.get("issueIdentifier", "No disponible")
+        article_number = doc.get("article_number", "No disponible")
+        issn = doc.get("issn", "No disponible")
+        eissn = doc.get("eIssn", "No disponible")
+
+        # Agregar nodo principal con información completa
+        G.add_node(main_label, 
+                   label=main_label, 
+                   title=doc.get("title", "Título desconocido"),
+                   color="red", 
+                   size=20,
+                   url=url,
+                   publicationName=journal_name, 
+                   volume=volume, 
+                   issueIdentifier=issue, 
+                   article_number=article_number, 
+                   issn=issn, 
+                   eIssn=eissn)
 
         # Procesar referencias
         for ref in doc.get("ref_docs", []):
@@ -473,47 +495,85 @@ def build_citation_graph(documents):
 
             # Etiqueta de la referencia
             ref_label = f"{ref_author} - {ref_pub_year}"
+            ref_doi = ref.get("doi")
+            ref_url = f"https://doi.org/{ref_doi}" if ref_doi else "#"
 
+            # Obtener información de la revista de la referencia
+            ref_journal_name = ref.get("sourcetitle", "Revista desconocida")
             if ref_pub_year != "Desconocido":
-                G.add_node(ref_label, label=ref_label, title=ref.get("title", "Título desconocido"),
-                           color="blue", size=15)
+                G.add_node(ref_label, 
+                           label=ref_label, 
+                           title=ref.get("title", "Título desconocido"),
+                           color="blue", 
+                           size=15,
+                           url=ref_url,
+                           publicationName=ref_journal_name, 
+                        )
                 G.add_edge(main_label, ref_label)
 
     return G
 
 
-def plot_citation_graph(G):
+
+
+def plot_citation_graph(G): 
     """
     Crea un grafo interactivo con pyvis donde los nodos muestran "Título"
-    pero revelan el nombre completo al pasar el mouse, junto con autores, año y revista.
+    pero revelan información completa al hacer hover (Título, Autor, Año, Revista, Volumen...).
     """
     net = Network(height="700px", width="100%", directed=True)
     net.toggle_physics(True)
 
-    # Añadir nodos con información adicional para mostrar al hacer hover
+    # Añadir nodos con información detallada
     for node, data in G.nodes(data=True):
-        # Obtener la información necesaria del nodo (Título, Autor, Año, Revista)
-        label_parts = data["label"].split(" - ")  # Suponiendo que la etiqueta está en formato "Autor - Año"
+        # Obtener título y autor
+        title = data.get("title", "Título desconocido")
+        label_parts = data["label"].split(" - ")  # "Autor - Año"
         author = label_parts[0] if len(label_parts) > 1 else "Desconocido"
         year = label_parts[1] if len(label_parts) > 1 else "Desconocido"
-        title = data.get("title", "Título desconocido")
-        source_title = data.get("source_title", "Revista desconocida")  # Supongamos que tienes el nombre de la revista
 
-        # Crear un texto más completo para el hover, que incluye título, autores, año y revista
-        hover_text = f"""
-            Título: {title}
-            Autores: {author}
-            Año: {year}
-            Revista:{source_title}
-        """
+        # Obtener información de la revista
+        journal_name = data.get("publicationName", "Revista desconocida")
+        url = data.get("url", "#")
 
-        # Añadir el nodo a la red, con el texto completo para el hover
+        # Verificar si el nodo es azul (referencia) y eliminar campos innecesarios
+        if data.get("color") == "blue":
+            hover_text = f"""
+            <b>Título:</b> {title} <br>
+            <b>Autor:</b> {author} <br>
+            <b> Año:</b> {year} <br>
+            <b> Revista:</b> {journal_name} <br>
+            <a href="{url}" target="_blank">Ver artículo</a> 
+            """
+        else:
+            volume = data.get("volume", "No disponible")
+            issue = data.get("issueIdentifier", "No disponible")
+            article_number = data.get("article_number", "No disponible")
+            issn = data.get("issn", "No disponible")
+            eissn = data.get("eIssn", "No disponible")
+
+            hover_text = f"""
+            <b>Título:</b> {title} <br>
+            <b>Autor:</b> {author} <br>
+            <b>Año:</b> {year} <br>
+            <b>Revista:</b> {journal_name} <br>
+            <b>Volumen:</b> {volume} <br>
+            <b>Número:</b> {issue} <br>
+            <b>Artículo:</b> {article_number} <br>
+            <b>ISSN:</b> {issn} <br>
+            <b>eISSN:</b> {eissn} <br>
+            <a href="{url}" target="_blank">Ver artículo</a>
+            """
+
+        label_with_link = f'{data["label"]}'
+        # Añadir el nodo con la información completa en el hover
         net.add_node(
             node,
-            label=data["label"],   # Solo "Título"
+            label=label_with_link,  # Solo "Título"
             title=hover_text,  # Información completa en el hover
             color=data["color"],
-            size=data["size"]
+            size=data["size"],
+            href=url
         )
 
     # Añadir los bordes (aristas) entre los nodos
@@ -530,6 +590,8 @@ def plot_citation_graph(G):
 
     # Convertir el HTML a base64 para enviarlo en una API o para usarlo de otra manera
     return base64.b64encode(graph_html.encode()).decode("utf-8")
+
+
 
 
 @app.route('/generate_citation_graph', methods=['POST'])
