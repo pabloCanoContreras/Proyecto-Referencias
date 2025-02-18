@@ -377,6 +377,21 @@ def wordcloud():
     return send_file(img, mimetype='image/png', as_attachment=True, download_name='wordcloud.png')
 
 
+def get_citation_count(doi=None, scopus_id=None):
+    """ Obtiene el número de citas desde Scopus usando DOI o Scopus ID """
+    try:
+        if doi:
+            abstract = AbstractRetrieval(doi, view="FULL")
+        elif scopus_id:
+            abstract = AbstractRetrieval(scopus_id, view="FULL")
+        else:
+            return "Desconocido"
+        return abstract.citedby_count or 0
+    except Exception as e:
+        print(f"⚠️ Error obteniendo citas para {doi or scopus_id}: {e}")
+        return "Desconocido"
+
+
 def get_author_from_scopus(doi=None, scopus_id=None):
     """
     Intenta obtener el apellido del primer autor de un documento en Scopus,
@@ -452,6 +467,10 @@ def build_citation_graph(documents):
         # Etiqueta del nodo principal
         main_label = f"{main_author} - {main_pub_year}"
 
+        scopus_id = doc.get("id", "")
+        # 🔥 Obtener el número de citas
+        citation_count = get_citation_count(doi, scopus_id)
+
         # Obtener información de la revista
         journal_name = doc.get("publicationName", "Revista desconocida")
         volume = doc.get("volume", "No disponible")
@@ -464,6 +483,7 @@ def build_citation_graph(documents):
         G.add_node(main_label, 
                    label=main_label, 
                    title=doc.get("title", "Título desconocido"),
+                   citation_count=citation_count,
                    color="red", 
                    size=20,
                    url=url,
@@ -480,6 +500,10 @@ def build_citation_graph(documents):
 
             # Intentar obtener el autor de la referencia
             ref_author = "Desconocido"
+            ref_scopus_id = ref.get("id")
+            ref_doi = ref.get("doi")
+            # 🔥 Obtener citas de la referencia
+            ref_citation_count = get_citation_count(ref_doi, ref_scopus_id)
 
             # Si hay una lista de autores, extraer el apellido del primero
             ref_authors = ref.get("authors", [])  
@@ -495,7 +519,6 @@ def build_citation_graph(documents):
 
             # Etiqueta de la referencia
             ref_label = f"{ref_author} - {ref_pub_year}"
-            ref_doi = ref.get("doi")
             ref_url = f"https://doi.org/{ref_doi}" if ref_doi else "#"
 
             # Obtener información de la revista de la referencia
@@ -507,6 +530,7 @@ def build_citation_graph(documents):
                            color="blue", 
                            size=15,
                            url=ref_url,
+                           citation_count=ref_citation_count,
                            publicationName=ref_journal_name, 
                         )
                 G.add_edge(main_label, ref_label)
@@ -531,6 +555,7 @@ def plot_citation_graph(G):
         label_parts = data["label"].split(" - ")  # "Autor - Año"
         author = label_parts[0] if len(label_parts) > 1 else "Desconocido"
         year = label_parts[1] if len(label_parts) > 1 else "Desconocido"
+        citation_count = data.get("citation_count", "Desconocido")
 
         # Obtener información de la revista
         journal_name = data.get("publicationName", "Revista desconocida")
@@ -542,6 +567,7 @@ def plot_citation_graph(G):
             <b>Título:</b> {title} <br>
             <b>Autor:</b> {author} <br>
             <b> Año:</b> {year} <br>
+            <b> Citas:</b> {citation_count} <br>
             <b> Revista:</b> {journal_name} <br>
             <a href="{url}" target="_blank">Ver artículo</a> 
             """
@@ -556,6 +582,7 @@ def plot_citation_graph(G):
             <b>Título:</b> {title} <br>
             <b>Autor:</b> {author} <br>
             <b>Año:</b> {year} <br>
+             <b> Citas:</b> {citation_count} <br>
             <b>Revista:</b> {journal_name} <br>
             <b>Volumen:</b> {volume} <br>
             <b>Número:</b> {issue} <br>
