@@ -180,11 +180,21 @@ const ResultsTable = ({ results }) => {
                           </TableCell>
                           <TableCell>{article.publication_year}</TableCell>
                           <TableCell>{article.citation_count}</TableCell>
-                          <TableCell>{article.authors || "Sin autores"}</TableCell>
+                          <TableCell>
+                            {article.authors ? (
+                              article.authors.split(";").map((author, idx) => (
+                                <div key={idx} style={{ marginBottom: "10px" }}>
+                                  {author.trim()}
+                                </div>
+                              ))
+                            ) : (
+                              "Sin autores"
+                            )}
+                          </TableCell>
                           <TableCell>
                             {typeof article.h_index === "object" && Object.keys(article.h_index).length > 0
-                              ? Object.entries(article.h_index).map(([authorId, hIndex]) => (
-                                  <div key={authorId}>
+                              ? Object.entries(article.h_index).map(([authorId, hIndex], idx) => (
+                                  <div key={idx} style={{ marginBottom: "35px", marginTop: "22px" }}>
                                     <a href={`https://www.scopus.com/authid/detail.uri?authorId=${authorId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "blue" }}>
                                       {`${hIndex}`}
                                     </a>

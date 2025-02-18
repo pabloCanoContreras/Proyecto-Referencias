@@ -144,13 +144,13 @@ def generate_author_impact_report():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/search_and_rank', methods=['POST'])  
+@app.route('/search_and_rank', methods=['POST'])
 def search_and_rank():
     try:
         # Obtener parámetros de la solicitud
         data = request.get_json()
         busqueda = data.get('busqueda', '')
-        tipo_busqueda = data.get('tipoBusqueda', 'title')  # Ahora puede ser "title" o "author"
+        tipo_busqueda = data.get('tipoBusqueda', 'title')  # Puede ser "title", "author" o "keywords"
         fecha_inicio = data.get('fechaInicio', None)
         fecha_fin = data.get('fechaFin', None)
         sources = data.get('sources', ['scopus', 'crossref'])  # Fuentes seleccionadas
@@ -163,22 +163,21 @@ def search_and_rank():
             return jsonify({"error": "Las fechas deben ser números válidos"}), 400
 
         # Ajustar la consulta según el tipo de búsqueda
-        query = busqueda  # Por defecto es título
-        search_type = "title"  # Valor por defecto
+        query = busqueda  # Por defecto es búsqueda por título
+        search_type = "title"
 
         if tipo_busqueda.lower() == "author":
-            search_type = "author"  # Especificar búsqueda por autor
-        
+            search_type = "author"
         elif tipo_busqueda.lower() == "keywords":
             search_type = "keywords"
 
-        results = {"scopus": [], "crossref": []}  # ✅ Diccionario con listas separadas
+        results = {"scopus": [], "crossref": []}  # Diccionario con listas separadas
 
         for source in sources:
             if source in ['scopus', 'crossref']:
                 articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type) or []
 
-                filtered_articles = []  # ✅ Lista específica para cada fuente
+                filtered_articles = []  # Lista específica para cada fuente
 
                 for article in articles:
                     pub_year = None
@@ -197,20 +196,29 @@ def search_and_rank():
                             author_names = getattr(article_obj, 'author_names', 'Sin autores')
                             citation_count = getattr(article_obj, 'citedby_count', 0)
                             keywords = getattr(article_obj, 'authkeywords', 'No disponibles')
-                            journal_h_index = [{"year": entry.year, "citescore": entry.citescore} 
-                            for entry in (article.get("journal_h_index") or [])  
+                            journal_h_index = [
+                                {"year": getattr(entry, "year", "Desconocido"), "citescore": getattr(entry, "citescore", "No disponible")}
+                                for entry in (article.get("journal_h_index") or []) if entry is not None
                             ]
+
                             scimago_rank = article.get('scimago_rank', 'No disponibles')
-                            snip =  article.get('snip', 'No disponibles')
+                            snip = article.get('snip', 'No disponibles')
                             doi = getattr(article_obj, 'doi', 'No disponibles')
 
-                            # Extraer el año de publicación
+                            # Extraer el año de publicación de 'coverDate'
                             cover_date = getattr(article_obj, 'coverDate', None)
-                            if cover_date and len(cover_date) >= 4:
+                            if cover_date:  # Verificar si existe
                                 try:
-                                    pub_year = int(cover_date[:4])
+                                    if len(cover_date) == 4:  # Ejemplo: "2023"
+                                        pub_year = int(cover_date)
+                                    elif len(cover_date) == 7:  # Ejemplo: "2023-05"
+                                        pub_year = int(cover_date[:4])
+                                    else:  # Ejemplo: "2023-05-15"
+                                        pub_year = int(cover_date[:4])  # Extraer solo el año
                                 except ValueError:
-                                    pub_year = None
+                                    pub_year = None  # Si el formato es incorrecto, asignar None
+                            else:
+                                pub_year = None  # Si no existe, asignar None
 
                             # Obtener AUIDs y calcular H-index
                             author_ids = getattr(article_obj, "author_ids", "").split(";") if getattr(article_obj, "author_ids", None) else []
@@ -218,10 +226,10 @@ def search_and_rank():
                                 try:
                                     author = AuthorRetrieval(auid)
                                     h_index_info[auid] = author.h_index
-                                except Exception as e:
+                                except Exception:
                                     h_index_info[auid] = "No disponible"
 
-                            # ✅ Agregar artículo filtrado a la lista de Scopus
+                            # Agregar artículo filtrado a la lista de Scopus
                             if title != 'Sin título' and author_names != 'Sin autores':
                                 filtered_articles.append({
                                     "title": title,
@@ -234,7 +242,7 @@ def search_and_rank():
                                     "scimago_rank": scimago_rank,
                                     "doi": doi,
                                     "snip": snip,
-                                    "source": "scopus"  
+                                    "source": "scopus"
                                 })
 
                     elif source == "crossref":
@@ -249,9 +257,27 @@ def search_and_rank():
 
                                 # Extraer fecha de publicación
                                 pub_date = getattr(article_obj, "publication_date", None)
-                                pub_year = pub_date.year if pub_date and hasattr(pub_date, "year") else None
-                                citation_count = getattr(article_obj, "citation_count", "Sin título")
 
+                                # Intentar extraer el año correctamente
+                                pub_year = None  # Valor predeterminado
+
+                                if pub_date:
+                                    if isinstance(pub_date, str):
+                                        try:
+                                            if len(pub_date) == 4:  # Caso: solo año (ejemplo: "2023")
+                                                pub_year = int(pub_date)
+                                            elif len(pub_date) == 7:  # Caso: Año-Mes (ejemplo: "2023-05")
+                                                pub_year = int(pub_date[:4])
+                                            else:  # Caso: Año-Mes-Día (ejemplo: "2023-05-15")
+                                                pub_year = datetime.strptime(pub_date, "%Y-%m-%d").year
+                                        except ValueError:
+                                            pub_year = None  # Si el formato es incorrecto
+                                    elif hasattr(pub_date, "year"):
+                                        pub_year = pub_date.year
+
+                                citation_count = getattr(article_obj, "citation_count", "No disponible")
+
+                                # Procesar autores
                                 authors = []
                                 if hasattr(article_obj, "authors") and article_obj.authors:
                                     for author in article_obj.authors:
@@ -266,9 +292,9 @@ def search_and_rank():
                                         else:
                                             authors.append("Autor desconocido")
 
-                                    authors_str = ", ".join(filter(None, authors)) if authors else "Autores no disponibles"
+                                authors_str = ", ".join(filter(None, authors)) if authors else "Autores no disponibles"
 
-                                # ✅ Agregar artículo filtrado a la lista de CrossRef
+                                # Agregar artículo filtrado a la lista de CrossRef
                                 filtered_articles.append({
                                     "title": title,
                                     "citation_count": citation_count,  
@@ -276,10 +302,10 @@ def search_and_rank():
                                     "authors": authors_str,
                                     "h_index": "N/A",
                                     "keywords": "No disponibles",
-                                    "source": "crossref"  
+                                    "source": "crossref"
                                 })
 
-                # ✅ Filtrar artículos por fecha si corresponde
+                # Filtrar artículos por fecha si corresponde
                 final_articles = [
                     article for article in filtered_articles 
                     if isinstance(article["publication_year"], int)
@@ -287,25 +313,14 @@ def search_and_rank():
                         and (not fecha_fin or article["publication_year"] <= fecha_fin))
                 ]
 
-                # ✅ Guardar artículos en la lista correspondiente
+                # Guardar artículos en la lista correspondiente
                 results[source] = final_articles  
 
         return jsonify(results)
 
     except Exception as e:
         print("❌ Error en el backend:", str(e))
-        return jsonify({"error": str(e)}), 500  
-
-
-        return jsonify(results)
-
-    except Exception as e:
-        print("❌ Error en el backend:", str(e))
         return jsonify({"error": str(e)}), 500
-
-
-
-
 
 
 @app.route('/get_journal_metrics', methods=['GET'])
