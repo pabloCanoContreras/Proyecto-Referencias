@@ -292,7 +292,8 @@ def search_and_rank():
                                         else:
                                             authors.append("Autor desconocido")
 
-                                authors_str = ", ".join(filter(None, authors)) if authors else "Autores no disponibles"
+                                authors_str = ", ".join(authors) if authors else "Autores no disponibles"
+                                print("Autores flask de crossref",authors_str)
 
                                 # Agregar artículo filtrado a la lista de CrossRef
                                 filtered_articles.append({
@@ -469,22 +470,27 @@ def build_citation_graph(documents):
         print("\n🔹 Documento principal:", doc)  # ✅ Depuración
 
         # Obtener el apellido del autor principal
-        creator = doc.get("creator", "")  
-        main_author = extract_last_name(creator)
-
+        creator = doc.get("creator", "")
         doi = doc.get("doi", "")
-        url = f"https://doi.org/{doi}" if doi else "#"
-
         # Obtener el año de publicación desde 'coverDisplayDate'
         cover_display_date = doc.get("coverDisplayDate", "")
+
+        scopus_id = doc.get("id", "")
+
+        main_author = extract_last_name(creator)
+        if doi:
+            url=f"https://doi.org/{doi}"
+        elif scopus_id:
+            url=f"https://www.scopus.com/record/display.uri?eid={scopus_id}"
+        else:
+            url=None
+
         main_pub_year = extract_year(cover_display_date)
+        # 🔥 Obtener el número de citas
+        citation_count = get_citation_count(doi, scopus_id)
 
         # Etiqueta del nodo principal
         main_label = f"{main_author} - {main_pub_year}"
-
-        scopus_id = doc.get("id", "")
-        # 🔥 Obtener el número de citas
-        citation_count = get_citation_count(doi, scopus_id)
 
         # Obtener información de la revista
         journal_name = doc.get("publicationName", "Revista desconocida")
@@ -494,20 +500,20 @@ def build_citation_graph(documents):
         issn = doc.get("issn", "No disponible")
         eissn = doc.get("eIssn", "No disponible")
 
-        # Agregar nodo principal con información completa
-        G.add_node(main_label, 
-                   label=main_label, 
-                   title=doc.get("title", "Título desconocido"),
-                   citation_count=citation_count,
-                   color="red", 
-                   size=20,
-                   url=url,
-                   publicationName=journal_name, 
-                   volume=volume, 
-                   issueIdentifier=issue, 
-                   article_number=article_number, 
-                   issn=issn, 
-                   eIssn=eissn)
+        if url:
+            G.add_node(main_label, 
+                    label=main_label, 
+                    title=doc.get("title", "Título desconocido"),
+                    citation_count=citation_count,
+                    color="red", 
+                    size=20,
+                    url=url,
+                    publicationName=journal_name, 
+                    volume=volume, 
+                    issueIdentifier=issue, 
+                    article_number=article_number, 
+                    issn=issn, 
+                    eIssn=eissn)
 
         # Procesar referencias
         for ref in doc.get("ref_docs", []):
@@ -526,7 +532,9 @@ def build_citation_graph(documents):
                 ref_author = extract_last_name(ref_authors[0])
             else:
                 # Si no hay autores en los datos originales, intentar obtener desde Scopus
-                ref_author = get_author_from_scopus(doi=ref.get("doi"), scopus_id=ref.get("id"))
+                ref_author = get_author_from_scopus(doi=ref_doi, scopus_id=ref_scopus_id)
+
+
 
             # Obtener el año de publicación de la referencia
             ref_pub_date = ref.get("pub_date", "Desconocido")
@@ -534,11 +542,18 @@ def build_citation_graph(documents):
 
             # Etiqueta de la referencia
             ref_label = f"{ref_author} - {ref_pub_year}"
-            ref_url = f"https://doi.org/{ref_doi}" if ref_doi else "#"
+
+            if ref_doi:
+                ref_url = f"https://doi.org/{ref_doi}"
+            elif ref_scopus_id:
+                ref_url = f"https://www.scopus.com/record/display.uri?eid={ref_scopus_id}"
+            else:
+                ref_url = None  # Si no tiene identificador, no agregarlo
 
             # Obtener información de la revista de la referencia
             ref_journal_name = ref.get("sourcetitle", "Revista desconocida")
-            if ref_pub_year != "Desconocido":
+
+            if ref_pub_year != "Desconocido" and ref_url:
                 G.add_node(ref_label, 
                            label=ref_label, 
                            title=ref.get("title", "Título desconocido"),
@@ -597,7 +612,7 @@ def plot_citation_graph(G):
             <b>Título:</b> {title} <br>
             <b>Autor:</b> {author} <br>
             <b>Año:</b> {year} <br>
-             <b> Citas:</b> {citation_count} <br>
+            <b> Citas:</b> {citation_count} <br>
             <b>Revista:</b> {journal_name} <br>
             <b>Volumen:</b> {volume} <br>
             <b>Número:</b> {issue} <br>

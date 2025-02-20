@@ -39,7 +39,7 @@ const ResultsTable = ({ results }) => {
   const generateCSV = (data, source) => {
     const headers = ["Título", "Año", "Citas", "Autores", "H-Index", "Keywords"];
     if (source === "scopus") {
-      headers.push("CiteScore", "SNIP", "DOI", "Scimago Rank"); // Agregar columnas adicionales
+      headers.push("CiteScore", "SNIP", "DOI", "Scimago Rank"); 
     }
   
     const rows = data.map((article) => {
@@ -144,11 +144,10 @@ const ResultsTable = ({ results }) => {
                         { id: "title", label: "Título" },
                         { id: "publication_year", label: "Año" },
                         { id: "citation_count", label: "Citas" },
-                        { id: "authors", label: "Autores" },
-                        { id: "h_index", label: "H-Index" },
+                        { id: "authors", label: "Autores Index" },
                         { id: "keywords", label: "Keywords" },
                       ].map((column) => (
-                        <TableCell key={column.id}>
+                        <TableCell key={column.id} sx={{ textAlign: "center", fontWeight: "bold" }}>
                           <TableSortLabel
                             active={orderBy === column.id}
                             direction={orderBy === column.id ? order : "asc"}
@@ -160,10 +159,10 @@ const ResultsTable = ({ results }) => {
                       ))}
                       {source === "scopus" && (
                         <>
-                          <TableCell>CiteScore</TableCell>
-                          <TableCell>SNIP</TableCell>
-                          <TableCell>DOI</TableCell>
-                          <TableCell>Scimago Rank</TableCell>
+                          <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>CiteScore</TableCell>
+                          <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>SNIP</TableCell>
+                          <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>DOI</TableCell>
+                          <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>Scimago Rank</TableCell>
                         </>
                       )}
                     </TableRow>
@@ -181,26 +180,40 @@ const ResultsTable = ({ results }) => {
                           <TableCell>{article.publication_year}</TableCell>
                           <TableCell>{article.citation_count}</TableCell>
                           <TableCell>
-                            {article.authors ? (
-                              article.authors.split(";").map((author, idx) => (
-                                <div key={idx} style={{ marginBottom: "10px" }}>
-                                  {author.trim()}
-                                </div>
-                              ))
-                            ) : (
-                              "Sin autores"
-                            )}
-                          </TableCell>
                           <TableCell>
-                            {typeof article.h_index === "object" && Object.keys(article.h_index).length > 0
-                              ? Object.entries(article.h_index).map(([authorId, hIndex], idx) => (
-                                  <div key={idx} style={{ marginBottom: "35px", marginTop: "22px" }}>
-                                    <a href={`https://www.scopus.com/authid/detail.uri?authorId=${authorId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "blue" }}>
-                                      {`${hIndex}`}
-                                    </a>
-                                  </div>
-                                ))
-                              : "N/A"}
+                          <TableCell>
+                              {article.authors && (
+                                <>
+                                  {article.authors.split(",").map((author, idx) => {
+                                    // Extraer los datos basados en si es Scopus o CrossRef
+                                    if (source === "scopus" && typeof article.h_index === "object") {
+                                      const hIndexEntries = Object.entries(article.h_index);
+                                      const [authorId, hIndex] = hIndexEntries[idx] || [null, "N/A"];
+
+                                      return (
+                                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                                          <span>{author.trim()}</span>
+                                          {authorId && (
+                                            <a href={`https://www.scopus.com/authid/detail.uri?authorId=${authorId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "blue" }}>
+                                              {hIndex}
+                                            </a>
+                                          )}
+                                        </div>
+                                      );
+                                    } else {
+                                      // Mostrar solo los autores para CrossRef (sin H-Index)
+                                      return (
+                                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                                          <span>{author.trim()}</span>
+                                        </div>
+                                      );
+                                    }
+                                  })}
+                                </>
+                              ) || "Sin autores"}
+                            </TableCell>
+
+                          </TableCell>
                           </TableCell>
                           <TableCell>{article.keywords || "No disponibles"}</TableCell>
                           {source === "scopus" && (
