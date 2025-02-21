@@ -1,3 +1,6 @@
+import ClearIcon from "@mui/icons-material/Clear";
+import SearchIcon from "@mui/icons-material/Search";
+import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -7,10 +10,15 @@ import TableHead from "@mui/material/TableHead";
 import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import TableSortLabel from "@mui/material/TableSortLabel";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import PropTypes from "prop-types";
 import React, { useState } from "react";
 import { FaDownload } from "react-icons/fa";
+
+function escapeRegExp(value) {
+  return value.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+}
 
 const ResultsTable = ({ results }) => {
   const [paginationState, setPaginationState] = useState({
@@ -18,6 +26,7 @@ const ResultsTable = ({ results }) => {
     crossref: { page: 0, rowsPerPage: 10 },
   });
 
+  const [searchText, setSearchText] = useState("");
   const [order, setOrder] = useState("asc");
   const [orderBy, setOrderBy] = useState("");
 
@@ -34,6 +43,10 @@ const ResultsTable = ({ results }) => {
       if (a[orderBy] > b[orderBy]) return order === "asc" ? 1 : -1;
       return 0;
     });
+  };
+
+  const requestSearch = (searchValue) => {
+    setSearchText(searchValue);
   };
 
   const generateCSV = (data, source) => {
@@ -93,31 +106,39 @@ const ResultsTable = ({ results }) => {
   const [citationGraph, setCitationGraph] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ top: "50%", left: "50%" });
 
-  const fetchCitationGraph = async (title) => {
+  const fetchCitationGraph = async (title, source) => {
     try {
       const response = await fetch("http://localhost:5000/generate_citation_graph", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: title }),
+        body: JSON.stringify({ query: title, source }), // <-- Enviar la fuente también
       });
-
+  
       const data = await response.json();
-
+  
       if (data.status === "success") {
-        // Crear un blob con el contenido HTML
         const blob = new Blob([atob(data.graph_html)], { type: "text/html" });
         const url = URL.createObjectURL(blob);
-
-        // Abrir en nueva pestaña
         window.open(url, "_blank");
       } else {
-        alert("Error generando el grafo: " + data.message);
+        alert(`Error generando el grafo para ${source}: ` + data.message);
       }
     } catch (error) {
-      console.error("Error al obtener el gráfico de citas:", error);
+      console.error(`Error al obtener el gráfico de citas para ${source}:`, error);
       alert("No se pudo generar el grafo.");
     }
   };
+
+  const filteredRows = (rows) => {
+    if (!searchText) return rows;
+    const searchRegex = new RegExp(escapeRegExp(searchText), "i");
+    return rows.filter((row) =>
+      Object.values(row).some((value) =>
+        value !== null && value !== undefined && searchRegex.test(String(value))
+      )
+    );    
+  };
+  
 
   if (!Object.keys(results).length) {
     return <p className="text-muted mt-4">No hay resultados para mostrar.</p>;
@@ -125,10 +146,31 @@ const ResultsTable = ({ results }) => {
 
   return (
     <div className="mt-5">
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+        <TextField
+          variant="outlined"
+          size="small"
+          placeholder="Filtrar por titulo, citas, keywords etc...."
+          value={searchText}
+          onChange={(e) => requestSearch(e.target.value)}
+          InputProps={{
+            startAdornment: <SearchIcon fontSize="small" />,
+            endAdornment: (
+              <IconButton
+                size="small"
+                onClick={() => requestSearch("")}
+                style={{ visibility: searchText ? "visible" : "hidden" }}
+              >
+                <ClearIcon fontSize="small" />
+              </IconButton>
+            ),
+          }}
+        />
+      </div>
       {Object.keys(results).map((source) => {
         const rows = results[source];
         const { page, rowsPerPage } = paginationState[source] || { page: 0, rowsPerPage: 10 };
-        const sortedRows = sortRows(rows);
+        const sortedRows = sortRows(filteredRows(rows));
 
         return (
           <div key={source} className="mb-5" style={{ position: "relative" }}>
@@ -173,7 +215,7 @@ const ResultsTable = ({ results }) => {
                       .map((article, index) => (
                         <TableRow hover key={index}>
                           <TableCell
-                            onClick={() => fetchCitationGraph(article.title)}
+                            onClick={() => fetchCitationGraph(article.title, source)} // <-- Pasar 'source'
                             style={{ color: "blue", cursor: "pointer", textDecoration: "underline" }}>
                             {article.title}
                           </TableCell>

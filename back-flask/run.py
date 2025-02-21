@@ -7,6 +7,7 @@ from ranking.rankingfinish import LitStudy
 import pandas as pd
 import nltk
 import csv
+import requests
 import os
 import networkx as nx
 from nltk.corpus import stopwords
@@ -393,20 +394,44 @@ def wordcloud():
     return send_file(img, mimetype='image/png', as_attachment=True, download_name='wordcloud.png')
 
 
-def get_citation_count(doi=None, scopus_id=None):
-    """ Obtiene el número de citas desde Scopus usando DOI o Scopus ID """
+def get_citation_count(doi=None, scopus_id=None, source='scopus'): 
+    """ Obtiene el número de citas desde Scopus o CrossRef usando DOI o Scopus ID """
     try:
-        if doi:
-            abstract = AbstractRetrieval(doi, view="FULL")
-        elif scopus_id:
-            abstract = AbstractRetrieval(scopus_id, view="FULL")
+        if source.lower() == 'scopus':
+            if scopus_id:
+                abstract = AbstractRetrieval(scopus_id, view="FULL")
+                return abstract.citedby_count or 0
+            elif doi:
+                abstract = AbstractRetrieval(doi, view="FULL")
+                return abstract.citedby_count or 0
+        elif source.lower() == 'crossref':
+            if doi:
+                url = f"https://api.crossref.org/works/{doi}"
+                response = requests.get(url)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data['message'].get('is-referenced-by-count', 0)
+                return 0
         else:
             return "Desconocido"
-        return abstract.citedby_count or 0
     except Exception as e:
         print(f"⚠️ Error obteniendo citas para {doi or scopus_id}: {e}")
         return "Desconocido"
 
+
+
+def get_author_from_crossref(doi):
+    """
+    Obtiene el autor de un artículo usando su DOI desde CrossRef.
+    """
+    url = f"https://api.crossref.org/works/{doi}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        authors = data['message'].get('author', [])
+        if authors:
+            return extract_last_name(authors[0]['family'])
+    return "Desconocido"
 
 def get_author_from_scopus(doi=None, scopus_id=None):
     """
@@ -460,32 +485,33 @@ def extract_year(date_string):
 
 
 
-def build_citation_graph(documents): 
+def build_citation_graph(documents, source='None'): 
     """
     Crea un grafo de citas a partir de los documentos, usando 'Apellido - Año' en los nodos.
     """
     G = nx.DiGraph()
+    
+    # Diccionario para almacenar las referencias ya agregadas por su etiqueta
+    nodes_set = set()
 
     for doc in documents:
         print("\n🔹 Documento principal:", doc)  # ✅ Depuración
 
-        # Obtener el apellido del autor principal
+        
         creator = doc.get("creator", "")
         doi = doc.get("doi", "")
-        # Obtener el año de publicación desde 'coverDisplayDate'
         cover_display_date = doc.get("coverDisplayDate", "")
-
         scopus_id = doc.get("id", "")
-
+        
         main_author = extract_last_name(creator)
-        if doi:
-            url=f"https://doi.org/{doi}"
-        elif scopus_id:
-            url=f"https://www.scopus.com/record/display.uri?eid={scopus_id}"
-        else:
-            url=None
-
         main_pub_year = extract_year(cover_display_date)
+        if doi:
+            url = f"https://doi.org/{doi}"
+        elif scopus_id:
+            url = f"https://www.scopus.com/record/display.uri?eid={scopus_id}"
+        else:
+            url = None
+       
         # 🔥 Obtener el número de citas
         citation_count = get_citation_count(doi, scopus_id)
 
@@ -501,19 +527,21 @@ def build_citation_graph(documents):
         eissn = doc.get("eIssn", "No disponible")
 
         if url:
-            G.add_node(main_label, 
-                    label=main_label, 
-                    title=doc.get("title", "Título desconocido"),
-                    citation_count=citation_count,
-                    color="red", 
-                    size=20,
-                    url=url,
-                    publicationName=journal_name, 
-                    volume=volume, 
-                    issueIdentifier=issue, 
-                    article_number=article_number, 
-                    issn=issn, 
-                    eIssn=eissn)
+            if main_label not in nodes_set:
+                G.add_node(main_label, 
+                           label=main_label, 
+                           title=doc.get("title", "Título desconocido"),
+                           citation_count=citation_count,
+                           color="red", 
+                           size=20,
+                           url=url,
+                           publicationName=journal_name, 
+                           volume=volume, 
+                           issueIdentifier=issue, 
+                           article_number=article_number, 
+                           issn=issn, 
+                           eIssn=eissn)
+                nodes_set.add(main_label)
 
         # Procesar referencias
         for ref in doc.get("ref_docs", []):
@@ -522,19 +550,11 @@ def build_citation_graph(documents):
             # Intentar obtener el autor de la referencia
             ref_author = "Desconocido"
             ref_scopus_id = ref.get("id")
-            ref_doi = ref.get("doi")
+            ref_doi = ref.get("DOI")
             # 🔥 Obtener citas de la referencia
             ref_citation_count = get_citation_count(ref_doi, ref_scopus_id)
 
-            # Si hay una lista de autores, extraer el apellido del primero
-            ref_authors = ref.get("authors", [])  
-            if isinstance(ref_authors, list) and ref_authors:
-                ref_author = extract_last_name(ref_authors[0])
-            else:
-                # Si no hay autores en los datos originales, intentar obtener desde Scopus
-                ref_author = get_author_from_scopus(doi=ref_doi, scopus_id=ref_scopus_id)
-
-
+            ref_author = get_author_from_crossref(ref_doi) if source == 'crossref' else get_author_from_scopus(ref_doi, ref_scopus_id)
 
             # Obtener el año de publicación de la referencia
             ref_pub_date = ref.get("pub_date", "Desconocido")
@@ -553,22 +573,26 @@ def build_citation_graph(documents):
             # Obtener información de la revista de la referencia
             ref_journal_name = ref.get("sourcetitle", "Revista desconocida")
 
+            # Si no se ha agregado la referencia al grafo
             if ref_pub_year != "Desconocido" and ref_url:
-                G.add_node(ref_label, 
-                           label=ref_label, 
-                           title=ref.get("title", "Título desconocido"),
-                           color="blue", 
-                           size=15,
-                           url=ref_url,
-                           citation_count=ref_citation_count,
-                           publicationName=ref_journal_name, 
-                        )
+                # Verifica si la referencia ya existe
+                if ref_label not in nodes_set:
+                    # Si no existe, la agrega
+                    G.add_node(ref_label, 
+                               label=ref_label, 
+                               title=ref.get("title", "Título desconocido"),
+                               color="blue", 
+                               size=15,
+                               url=ref_url,
+                               citation_count=ref_citation_count,
+                               publicationName=ref_journal_name)
+
+                    nodes_set.add(ref_label)
+
+                # Crear el arco (edge) entre el documento principal y la referencia
                 G.add_edge(main_label, ref_label)
 
     return G
-
-
-
 
 def plot_citation_graph(G): 
     """
@@ -649,6 +673,54 @@ def plot_citation_graph(G):
     return base64.b64encode(graph_html.encode()).decode("utf-8")
 
 
+def extract_year(date_string):
+    """
+    Extrae el año de una fecha en formato 'Mes Año', 'YYYY-MM-DD' o lista de CrossRef.
+    Si la fecha es None o vacía, devuelve 'Desconocido'.
+    """
+    if not date_string:
+        return "Desconocido"
+
+    # 🛠 Si es una lista de listas (formato CrossRef)
+    if isinstance(date_string, list) and isinstance(date_string[0], list):
+        return str(date_string[0][0])  # Devuelve el primer valor (año)
+
+    # 🛠 Si es un número entero (puede venir así en CrossRef)
+    if isinstance(date_string, int):
+        return str(date_string)
+
+    # 🛠 Si es un string normal (Scopus)
+    parts = date_string.split()  # Divide por espacios
+    return parts[-1] if parts[-1].isdigit() else "Desconocido"
+
+
+
+def get_refs_crossref(query, limit=50):
+    """
+    Busca referencias en CrossRef basándose en el título.
+    """
+    url = f"https://api.crossref.org/works?query={query}&rows={limit}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        documents = []
+        for item in data.get("message", {}).get("items", []):
+            documents.append({
+                "title": item.get("title", ["Título desconocido"])[0],
+                "creator": item.get("author", [{}])[0].get("family", "Desconocido"),
+                "doi": item.get("DOI", ""),
+                "coverDisplayDate": extract_year(item.get("issued", {}).get("date-parts", [[None]])),
+                "publicationName": item.get("container-title", ["Revista desconocida"])[0],
+                "ref_docs": item.get("reference", []),
+            })
+
+        return documents
+    except Exception as e:
+        print(f"⚠️ Error obteniendo referencias de CrossRef: {e}")
+        return []
+
 
 
 @app.route('/generate_citation_graph', methods=['POST'])
@@ -658,6 +730,7 @@ def generate_citation_graph():
     """
     data = request.get_json()
     query = data.get('query', '')
+    source = data.get('source', 'scopus')  # ⬅️ Por defecto, usa Scopus si no se especifica
     limit = int(data.get('limit', 4))  # Limita la cantidad de referencias
 
     if not query:
@@ -666,15 +739,24 @@ def generate_citation_graph():
     try:
         full_query = f"{query}"
         print("Buscando referencias para:", full_query)
+        print(f"📖 Buscando referencias en {source} para:", query)
 
-        # 🚀 Llamar a la función y evitar el error de NoneType
-        documents = get_refs_scopus(full_query, limit=limit) or []  # Si None, devolver []
+        # 🚀 Elegir la función correcta según la fuente
+        if source.lower() == "scopus":
+            documents = get_refs_scopus(query, limit=limit) or []
+        elif source.lower() == "crossref":
+            documents = get_refs_crossref(query, limit=limit) or []
+        else:
+            return jsonify({"status": "error", "message": f"Fuente desconocida: {source}"}), 400
+
+        if not documents:
+            return jsonify({"status": "error", "message": "No se encontraron documentos"}), 404
 
         if not isinstance(documents, list) or not documents:
             return jsonify({"status": "error", "message": "No se encontraron documentos"}), 404
 
         # Crear el grafo de citas
-        G = build_citation_graph(documents)
+        G = build_citation_graph(documents, source=source)
 
         # Convertir el grafo a HTML interactivo en base64
         citation_graph_base64 = plot_citation_graph(G)
