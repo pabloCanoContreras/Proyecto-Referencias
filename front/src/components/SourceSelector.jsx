@@ -7,7 +7,7 @@ const SourceSelector = ({ selectedSources, setSelectedSources }) => {
     );
   };
 
-  const sources = ["scopus", "crossref"]; // Eliminado 'scholar'
+  const sources = ["scopus", "crossref"]; 
 
   return (
     <div className="mt-3">

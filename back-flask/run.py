@@ -661,6 +661,26 @@ def plot_citation_graph(G):
     for edge in G.edges():
         net.add_edge(edge[0], edge[1])
 
+    net.set_options('''
+    var options = {
+        "nodes": {
+            "borderWidth": 2,
+            "borderWidthSelected": 4,
+            "shape": "dot"
+        },
+        "physics": {
+            "enabled": true
+        },
+        "interaction": {
+            "hover": true,
+            "click": true
+        }
+    }
+
+    });
+    ''')
+
+
     # Guardar el grafo en un archivo HTML
     graph_path = "citation_graph.html"
     net.save_graph(graph_path)

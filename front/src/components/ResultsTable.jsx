@@ -1,5 +1,7 @@
+import { makeStyles } from '@material-ui/core/styles';
 import ClearIcon from "@mui/icons-material/Clear";
 import SearchIcon from "@mui/icons-material/Search";
+import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -14,7 +16,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import PropTypes from "prop-types";
 import React, { useState } from "react";
-import { FaDownload } from "react-icons/fa";
+import { FaDownload, FaProjectDiagram } from "react-icons/fa";
 
 function escapeRegExp(value) {
   return value.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -36,6 +38,7 @@ const ResultsTable = ({ results }) => {
     setOrderBy(property);
   };
 
+
   const sortRows = (rows) => {
     if (!orderBy) return rows;
     return [...rows].sort((a, b) => {
@@ -45,9 +48,42 @@ const ResultsTable = ({ results }) => {
     });
   };
 
+  const useStyles = makeStyles({
+    container: {
+      maxHeight: 440, // Altura máxima con scroll automático
+    },
+  });
+
+
+  function ScrollableTable({ children }) {
+    const classes = useStyles();
+  
+    return (
+      <Paper>
+        <TableContainer className={classes.container}>
+          <Table stickyHeader>{children}</Table>
+        </TableContainer>
+      </Paper>
+    );
+  }
+
   const requestSearch = (searchValue) => {
     setSearchText(searchValue);
   };
+
+  const removeDuplicates = (rows) => {
+    const seen = new Set();
+    return rows.filter((article) => {
+      const uniqueKey = `${article.title}|${article.publication_year}|${article.citation_count}`;
+      if (seen.has(uniqueKey)) {
+        return false; // Filtra los duplicados
+      } else {
+        seen.add(uniqueKey);
+        return true;
+      }
+    });
+  };
+  
 
   const generateCSV = (data, source) => {
     const headers = ["Título", "Año", "Citas", "Autores", "H-Index", "Keywords"];
@@ -146,13 +182,29 @@ const ResultsTable = ({ results }) => {
 
   return (
     <div className="mt-5">
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+      <div style={{ marginBottom: "20px", textAlign: "center" }}>
         <TextField
           variant="outlined"
-          size="small"
           placeholder="Filtrar por titulo, citas, keywords etc...."
           value={searchText}
           onChange={(e) => requestSearch(e.target.value)}
+          fullWidth
+          sx={{
+            backgroundColor: "#fff", // Fondo blanco
+            borderRadius: "8px", // Bordes redondeados
+            boxShadow: "0px 4px 6px rgba(0, 0, 0, 0.1)", // Sombra sutil
+            "& .MuiOutlinedInput-root": {
+              "& fieldset": {
+                borderColor: "#ccc", // Color del borde
+              },
+              "&:hover fieldset": {
+                borderColor: "#007bff", // Color al pasar el mouse
+              },
+              "&.Mui-focused fieldset": {
+                borderColor: "#007bff", // Color al hacer clic
+              },
+            },
+          }}
           InputProps={{
             startAdornment: <SearchIcon fontSize="small" />,
             endAdornment: (
@@ -171,6 +223,7 @@ const ResultsTable = ({ results }) => {
         const rows = results[source];
         const { page, rowsPerPage } = paginationState[source] || { page: 0, rowsPerPage: 10 };
         const sortedRows = sortRows(filteredRows(rows));
+        const uniqueRows = removeDuplicates(sortedRows);
 
         return (
           <div key={source} className="mb-5" style={{ position: "relative" }}>
@@ -178,6 +231,7 @@ const ResultsTable = ({ results }) => {
               {source.toUpperCase()}
             </Typography>
             <Paper elevation={3}>
+              <ScrollableTable>
               <TableContainer>
                 <Table stickyHeader aria-label={`${source} table`}>
                   <TableHead>
@@ -210,7 +264,7 @@ const ResultsTable = ({ results }) => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sortedRows
+                    {uniqueRows
                       .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                       .map((article, index) => (
                         <TableRow hover key={index}>
@@ -231,7 +285,6 @@ const ResultsTable = ({ results }) => {
                                     if (source === "scopus" && typeof article.h_index === "object") {
                                       const hIndexEntries = Object.entries(article.h_index);
                                       const [authorId, hIndex] = hIndexEntries[idx] || [null, "N/A"];
-
                                       return (
                                         <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
                                           <span>{author.trim()}</span>
@@ -287,10 +340,11 @@ const ResultsTable = ({ results }) => {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ScrollableTable>
               <TablePagination
                 rowsPerPageOptions={[10, 25, 100]}
                 component="div"
-                count={rows.length}
+                count={uniqueRows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={(event, newPage) => setPaginationState((prev) => ({ ...prev, [source]: { ...prev[source], page: newPage } }))}
@@ -316,6 +370,16 @@ const ResultsTable = ({ results }) => {
               >
                 <FaDownload size={20} />
               </button>
+             
+              <Button
+                
+                color="secondary"
+                size='10px'
+                startIcon={<FaProjectDiagram />}
+                onClick={() => generateGephiFile(results)}
+              >
+                Exportar para Gephi
+              </Button>
             </div>
             {citationGraph && (
               <div style={{ position: "fixed", top: tooltipPosition.top, left: tooltipPosition.left, backgroundColor: "white", border: "1px solid gray", padding: "10px", boxShadow: "2px 2px 10px rgba(0,0,0,0.2)", zIndex: 1000 }}>

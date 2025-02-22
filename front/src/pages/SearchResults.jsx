@@ -1,6 +1,6 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import React, { useState } from 'react';
-import './SearchResults.css';
+
 
 const SearchResults = ({ resultados }) => {
   
