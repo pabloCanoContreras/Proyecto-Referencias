@@ -83,6 +83,25 @@ const ResultsTable = ({ results }) => {
       }
     });
   };
+
+  const exportGephi = async (dois) => {
+    try {
+      const response = await fetch("http://localhost:5000/export_gephi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dois }),
+      });
+  
+      const data = await response.json();
+      if (data.message) {
+        alert("Exportación completada. Revisa los archivos nodes.csv y edges.csv.");
+      } else {
+        alert("Error al exportar a Gephi.");
+      }
+    } catch (error) {
+      console.error("Error exportando a Gephi:", error);
+    }
+  };
   
 
   const generateCSV = (data, source) => {
@@ -372,11 +391,10 @@ const ResultsTable = ({ results }) => {
               </button>
              
               <Button
-                
                 color="secondary"
                 size='10px'
                 startIcon={<FaProjectDiagram />}
-                onClick={() => generateGephiFile(results)}
+                onClick={() => exportGephi(results.scopus.map(article => article.doi))}
               >
                 Exportar para Gephi
               </Button>

@@ -417,7 +417,70 @@ def get_citation_count(doi=None, scopus_id=None, source='scopus'):
     except Exception as e:
         print(f"⚠️ Error obteniendo citas para {doi or scopus_id}: {e}")
         return "Desconocido"
+    
+API_KEY = '0be79d019c20568890c2bb62478dd3b3'
+BASE_URL = "https://api.elsevier.com/content"
+HEADERS = {"X-ELS-APIKey": API_KEY, "Accept": "application/json"}
+    
+def get_article_details(doi):
+    url = f"{BASE_URL}/article/doi/{doi}"
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code == 200:
+        return response.json().get("full-text-retrieval-response", {}).get("coredata", {})
+    return None
 
+def get_cited_by(doi):
+    url = f"{BASE_URL}/search/scopus"
+    params = {"query": f"REF({doi})", "field": "dc:identifier,dc:title,dc:creator", "count": 200}
+    response = requests.get(url, headers=HEADERS, params=params)
+    if response.status_code == 200:
+        return response.json().get("search-results", {}).get("entry", [])
+    return []
+    
+
+def extract_relations(article_dois):
+    collaborations, citations, authors_set = [], [], set()
+    for doi in article_dois:
+        article_data = get_article_details(doi)
+        if article_data:
+            authors = article_data.get("dc:creator", [])
+            author_names = [author["$"] for author in authors]
+            authors_set.update(author_names)
+            for i in range(len(author_names)):
+                for j in range(i + 1, len(author_names)):
+                    collaborations.append([author_names[i], author_names[j]])
+            cited_by_articles = get_cited_by(doi)
+            for cited_article in cited_by_articles:
+                citing_authors = cited_article.get("dc:creator", [])
+                citing_author_names = [author["$"] for author in citing_authors]
+                for author in author_names:
+                    for citing_author in citing_author_names:
+                        citations.append([citing_author, author])
+    return collaborations, citations, authors_set
+
+@app.route('/export_gephi', methods=['POST'])
+def export_to_gephi():
+    data = request.json
+    dois = data.get("dois", [])
+    if not dois:
+        return jsonify({"error": "No se enviaron DOIs"}), 400
+
+    collaborations, citations, authors_set = extract_relations(dois)
+
+    df_nodes = pd.DataFrame(list(authors_set), columns=["Label"])
+    df_nodes["Id"] = df_nodes.index
+    author_to_id = {row["Label"]: row["Id"] for _, row in df_nodes.iterrows()}
+
+    df_edges = pd.DataFrame(
+        [[author_to_id[a], author_to_id[b], "Undirected", 1] for a, b in collaborations] +
+        [[author_to_id[a], author_to_id[b], "Directed", 1] for a, b in citations],
+        columns=["Source", "Target", "Type", "Weight"]
+    )
+
+    df_nodes.to_csv("nodes.csv", index=False)
+    df_edges.to_csv("edges.csv", index=False)
+
+    return jsonify({"message": "Archivos generados correctamente"}), 200
 
 
 def get_author_from_crossref(doi):
