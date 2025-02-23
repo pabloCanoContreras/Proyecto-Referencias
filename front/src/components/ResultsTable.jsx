@@ -28,6 +28,7 @@ const ResultsTable = ({ results }) => {
     crossref: { page: 0, rowsPerPage: 10 },
   });
 
+
   const [searchText, setSearchText] = useState("");
   const [order, setOrder] = useState("asc");
   const [orderBy, setOrderBy] = useState("");
@@ -84,12 +85,12 @@ const ResultsTable = ({ results }) => {
     });
   };
 
-  const exportGephi = async (dois) => {
+  const exportGephi = async (source, dois) => {
     try {
       const response = await fetch("http://localhost:5000/export_gephi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dois }),
+        body: JSON.stringify({source, dois }),
       });
   
       const data = await response.json();
@@ -280,6 +281,11 @@ const ResultsTable = ({ results }) => {
                           <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>Scimago Rank</TableCell>
                         </>
                       )}
+                       {source === "crossref" && (
+                        <>
+                          <TableCell sx={{ textAlign: "center", fontWeight: "bold" }}>DOI</TableCell>
+                        </>
+                      )}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -326,7 +332,6 @@ const ResultsTable = ({ results }) => {
                                 </>
                               ) || "Sin autores"}
                             </TableCell>
-
                           </TableCell>
                           </TableCell>
                           <TableCell>{article.keywords || "No disponibles"}</TableCell>
@@ -354,6 +359,22 @@ const ResultsTable = ({ results }) => {
                               <TableCell>{article.scimago_rank || "No disponible"}</TableCell>
                             </>
                           )}
+                          {source === "crossref" && (
+                            <TableCell>
+                                {article.doi ? (
+                                <a
+                                    href={`https://doi.org/${article.doi}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ textDecoration: "none", color: "blue" }}
+                                >
+                                    {article.doi}
+                                </a>
+                                ) : (
+                                "No disponible"
+                                )}
+                            </TableCell>
+                            )}
                         </TableRow>
                       ))}
                   </TableBody>
@@ -391,13 +412,14 @@ const ResultsTable = ({ results }) => {
               </button>
              
               <Button
-                color="secondary"
-                size='10px'
-                startIcon={<FaProjectDiagram />}
-                onClick={() => exportGephi(results.scopus.map(article => article.doi))}
-              >
-                Exportar para Gephi
-              </Button>
+            color="secondary"
+            size="small"
+            startIcon={<FaProjectDiagram />}
+            onClick={() => exportGephi(source, uniqueRows.map(article => article.doi))}
+            >
+            Exportar {source.toUpperCase()} a Gephi
+            </Button>
+
             </div>
             {citationGraph && (
               <div style={{ position: "fixed", top: tooltipPosition.top, left: tooltipPosition.left, backgroundColor: "white", border: "1px solid gray", padding: "10px", boxShadow: "2px 2px 10px rgba(0,0,0,0.2)", zIndex: 1000 }}>

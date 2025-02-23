@@ -7,7 +7,9 @@ from ranking.rankingfinish import LitStudy
 import pandas as pd
 import nltk
 import csv
+from litstudy.sources.crossref import CrossRefDocument
 import requests
+from litstudy import search_crossref
 import os
 import networkx as nx
 from nltk.corpus import stopwords
@@ -32,6 +34,15 @@ nltk.download('stopwords')
 # Inicialización de la aplicación Flask
 app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
 CORS(app)
+
+# Configuración de Scopus
+SCOPUS_API_KEY = "0be79d019c20568890c2bb62478dd3b3"
+SCOPUS_BASE_URL = "https://api.elsevier.com/content"
+SCOPUS_HEADERS = {"X-ELS-APIKey": SCOPUS_API_KEY, "Accept": "application/json"}
+
+# Configuración de CrossRef
+CROSSREF_BASE_URL = "https://api.crossref.org/works"
+
 
 # Instancia del servicio LitStudy con API Key
 api_key = "0be79d019c20568890c2bb62478dd3b3"
@@ -144,6 +155,7 @@ def generate_author_impact_report():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+        
 
 @app.route('/search_and_rank', methods=['POST'])
 def search_and_rank():
@@ -177,6 +189,7 @@ def search_and_rank():
         for source in sources:
             if source in ['scopus', 'crossref']:
                 articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type) or []
+                print("Articulos para {source}:",articles)
 
                 filtered_articles = []  # Lista específica para cada fuente
 
@@ -247,63 +260,30 @@ def search_and_rank():
                                 })
 
                     elif source == "crossref":
-                        for article_data in articles:
-                            if isinstance(article_data, dict) and "article" in article_data:
-                                article_obj = article_data["article"]
+                        # Llamamos a la función search_crossref para obtener los artículos de CrossRef
+                        docs = search_crossref(query=query, limit=10, session=None)
 
-                                # Extraer valores
-                                title = getattr(article_obj, "title", "Sin título")
-                                score = article_data.get("score", 0)  
-                                publisher = article_data.get("publisher", "Desconocido")
+                        # Filtramos los artículos obtenidos de CrossRef
+                        for doc in docs:
+                            if isinstance(doc, CrossRefDocument):  # Verificamos que el artículo sea un objeto CrossRefDocument
+                                title = doc.title
+                                doi = doc.id.doi  # Accedemos al DOI
 
                                 # Extraer fecha de publicación
-                                pub_date = getattr(article_obj, "publication_date", None)
+                                pub_date = doc.publication_date
+                                pub_year = pub_date.year if pub_date else "Desconocido"
 
-                                # Intentar extraer el año correctamente
-                                pub_year = None  # Valor predeterminado
+                                # Acceder a los autores
+                                authors = [author.name for author in doc.authors] if doc.authors else ["Autor desconocido"]
+                                authors_str = ", ".join(authors)
 
-                                if pub_date:
-                                    if isinstance(pub_date, str):
-                                        try:
-                                            if len(pub_date) == 4:  # Caso: solo año (ejemplo: "2023")
-                                                pub_year = int(pub_date)
-                                            elif len(pub_date) == 7:  # Caso: Año-Mes (ejemplo: "2023-05")
-                                                pub_year = int(pub_date[:4])
-                                            else:  # Caso: Año-Mes-Día (ejemplo: "2023-05-15")
-                                                pub_year = datetime.strptime(pub_date, "%Y-%m-%d").year
-                                        except ValueError:
-                                            pub_year = None  # Si el formato es incorrecto
-                                    elif hasattr(pub_date, "year"):
-                                        pub_year = pub_date.year
-
-                                citation_count = getattr(article_obj, "citation_count", "No disponible")
-
-                                # Procesar autores
-                                authors = []
-                                if hasattr(article_obj, "authors") and article_obj.authors:
-                                    for author in article_obj.authors:
-                                        given_name = getattr(author, "given", None)
-                                        family_name = getattr(author, "family", None)
-                                        full_name = f"{given_name or ''} {family_name or ''}".strip()
-
-                                        if full_name:  
-                                            authors.append(full_name)
-                                        elif hasattr(author, "name") and author.name:
-                                            authors.append(author.name)
-                                        else:
-                                            authors.append("Autor desconocido")
-
-                                authors_str = ", ".join(authors) if authors else "Autores no disponibles"
-                                print("Autores flask de crossref",authors_str)
-
-                                # Agregar artículo filtrado a la lista de CrossRef
+                                # Agregar el artículo procesado a la lista filtrada
                                 filtered_articles.append({
                                     "title": title,
-                                    "citation_count": citation_count,  
-                                    "publication_year": pub_year or "Desconocido",
+                                    "citation_count": doc.citation_count if doc.citation_count else 0,
+                                    "publication_year": pub_year,
                                     "authors": authors_str,
-                                    "h_index": "N/A",
-                                    "keywords": "No disponibles",
+                                    "doi": doi,
                                     "source": "crossref"
                                 })
 
@@ -336,63 +316,6 @@ def get_journal_metrics():
 
     return jsonify(all_info)
 
-@app.route('/upload_csv', methods=['POST'])
-def upload_csv():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    if file and file.filename.endswith('.csv'):
-        try:
-            data = pd.read_csv(file.stream)
-            if 'abstract' not in data.columns:
-                return jsonify({'error': 'CSV file must contain an "abstract" column.'}), 400
-
-            abstracts = data['abstract'].dropna().tolist()
-            all_keywords = []
-
-            def preprocesar_texto(texto):
-                texto = texto.lower()
-                tokens = word_tokenize(texto)
-                return [token for token in tokens if token.isalpha() and token not in stopwords.words('spanish')]
-
-            for abstract in abstracts:
-                palabras = preprocesar_texto(abstract)
-                all_keywords.extend(palabras)
-
-            keyword_counter = Counter(all_keywords)
-            df_keywords = pd.DataFrame(keyword_counter.items(), columns=['Palabra', 'Frecuencia'])
-            df_keywords['Frecuencia Relativa'] = df_keywords['Frecuencia'] / df_keywords['Frecuencia'].sum()
-
-            return jsonify(df_keywords.to_dict(orient='records'))
-
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-    else:
-        return jsonify({'error': 'Invalid file type. Only CSV files are allowed.'}), 400
-
-@app.route('/wordcloud', methods=['POST'])
-def wordcloud():
-    data = request.json
-    texto = data.get('texto', '')
-
-    if not texto:
-        return jsonify({'error': 'No se proporcionó texto'}), 400
-
-    wordcloud = WordCloud(width=800, height=400, background_color='white').generate(texto)
-
-    img = io.BytesIO()
-    plt.figure(figsize=(10, 5))
-    plt.imshow(wordcloud, interpolation='bilinear')
-    plt.axis('off')
-    plt.savefig(img, format='png')
-    img.seek(0)
-
-    return send_file(img, mimetype='image/png', as_attachment=True, download_name='wordcloud.png')
-
 
 def get_citation_count(doi=None, scopus_id=None, source='scopus'): 
     """ Obtiene el número de citas desde Scopus o CrossRef usando DOI o Scopus ID """
@@ -418,48 +341,106 @@ def get_citation_count(doi=None, scopus_id=None, source='scopus'):
         print(f"⚠️ Error obteniendo citas para {doi or scopus_id}: {e}")
         return "Desconocido"
     
-API_KEY = '0be79d019c20568890c2bb62478dd3b3'
-BASE_URL = "https://api.elsevier.com/content"
-HEADERS = {"X-ELS-APIKey": API_KEY, "Accept": "application/json"}
-    
-def get_article_details(doi):
-    url = f"{BASE_URL}/article/doi/{doi}"
-    response = requests.get(url, headers=HEADERS)
+
+def get_article_details_scopus(doi):
+    """Obtiene los detalles de un artículo desde Scopus."""
+    url = f"{SCOPUS_BASE_URL}/article/doi/{doi}"
+    response = requests.get(url, headers=SCOPUS_HEADERS)
     if response.status_code == 200:
         return response.json().get("full-text-retrieval-response", {}).get("coredata", {})
     return None
 
-def get_cited_by(doi):
-    url = f"{BASE_URL}/search/scopus"
+
+def get_cited_by_scopus(doi):
+    """Obtiene los artículos que citan un DOI desde Scopus."""
+    url = f"{SCOPUS_BASE_URL}/search/scopus"
     params = {"query": f"REF({doi})", "field": "dc:identifier,dc:title,dc:creator", "count": 200}
-    response = requests.get(url, headers=HEADERS, params=params)
+    response = requests.get(url, headers=SCOPUS_HEADERS, params=params)
     if response.status_code == 200:
         return response.json().get("search-results", {}).get("entry", [])
     return []
-    
 
-def extract_relations(article_dois):
+
+def get_article_details_crossref(doi):
+    """Obtiene los detalles del artículo desde CrossRef a través de la API."""
+    url = f"https://api.crossref.org/works/{doi}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()["message"]
+    else:
+        return None
+
+def get_cited_by_crossref(doi):
+    """Obtiene los artículos que citan un artículo desde CrossRef."""
+    url = f"https://api.crossref.org/works/{doi}/citations"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()["message"]["items"]
+    else:
+        return []
+
+
+
+def extract_relations(article_dois): 
+    """Extrae relaciones de colaboración y citas desde Scopus y CrossRef."""
     collaborations, citations, authors_set = [], [], set()
+
     for doi in article_dois:
-        article_data = get_article_details(doi)
+        # Intentar obtener los detalles desde Scopus primero, luego CrossRef
+        article_data = get_article_details_scopus(doi) or get_article_details_crossref(doi)
+
         if article_data:
-            authors = article_data.get("dc:creator", [])
-            author_names = [author["$"] for author in authors]
-            authors_set.update(author_names)
+            # Extraer autores desde Scopus (si es que es un artículo de Scopus)
+            if "scopus" in article_data.get("source", "").lower():
+                authors = article_data.get("authors", [])
+                if isinstance(authors, list):  # Verificar que sea una lista
+                    author_names = [author.get("full_name", "Autor desconocido") for author in authors if isinstance(author, dict) and "full_name" in author]
+                    authors_set.update(author_names)
+                else:
+                    author_names = []  # Si los autores no son una lista, asignar una lista vacía
+
+            # Extraer autores desde CrossRef
+            else:
+                authors = article_data.get("author", [])
+                if isinstance(authors, list):  # Verificar que sea una lista
+                    author_names = [author["given"] + " " + author["family"] for author in authors if "given" in author and "family" in author]
+                    authors_set.update(author_names)
+                else:
+                    author_names = []  # Si no es una lista, asignar una lista vacía
+
+            # Relaciones de colaboración
             for i in range(len(author_names)):
                 for j in range(i + 1, len(author_names)):
                     collaborations.append([author_names[i], author_names[j]])
-            cited_by_articles = get_cited_by(doi)
+
+            # Obtener citas desde Scopus primero, luego CrossRef
+            cited_by_articles = get_cited_by_scopus(doi) or get_cited_by_crossref(doi)
+
             for cited_article in cited_by_articles:
-                citing_authors = cited_article.get("dc:creator", [])
-                citing_author_names = [author["$"] for author in citing_authors]
+                citing_authors = cited_article.get("author", [])
+
+                # Verificar que citing_authors sea una lista y cada uno sea un diccionario con "given" y "family"
+                if isinstance(citing_authors, list):
+                    citing_author_names = [
+                        f"{author['given']} {author['family']}"
+                        for author in citing_authors
+                        if isinstance(author, dict) and "given" in author and "family" in author
+                    ]
+                else:
+                    citing_author_names = []  # Si no es una lista, asignar una lista vacía
+
                 for author in author_names:
                     for citing_author in citing_author_names:
                         citations.append([citing_author, author])
+
     return collaborations, citations, authors_set
 
-@app.route('/export_gephi', methods=['POST'])
+
+
+
+@app.route("/export_gephi", methods=["POST"])
 def export_to_gephi():
+    """Exporta datos a CSV para Gephi."""
     data = request.json
     dois = data.get("dois", [])
     if not dois:
@@ -483,6 +464,33 @@ def export_to_gephi():
     return jsonify({"message": "Archivos generados correctamente"}), 200
 
 
+
+def get_citation_count(doi=None, scopus_id=None, source='scopus'): 
+    """ Obtiene el número de citas desde Scopus o CrossRef usando DOI o Scopus ID """
+    try:
+        if source.lower() == 'scopus':
+            if scopus_id:
+                abstract = AbstractRetrieval(scopus_id, view="FULL")
+                return abstract.citedby_count or 0
+            elif doi:
+                abstract = AbstractRetrieval(doi, view="FULL")
+                return abstract.citedby_count or 0
+        elif source.lower() == 'crossref':
+            if doi:
+                url = f"https://api.crossref.org/works/{doi}"
+                response = requests.get(url)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data['message'].get('is-referenced-by-count', 0)
+                return 0
+        else:
+            return "Desconocido"
+    except Exception as e:
+        print(f"⚠️ Error obteniendo citas para {doi or scopus_id}: {e}")
+        return "Desconocido"
+
+
+
 def get_author_from_crossref(doi):
     """
     Obtiene el autor de un artículo usando su DOI desde CrossRef.
@@ -492,9 +500,12 @@ def get_author_from_crossref(doi):
     if response.status_code == 200:
         data = response.json()
         authors = data['message'].get('author', [])
+        print(authors)
         if authors:
             return extract_last_name(authors[0]['family'])
     return "Desconocido"
+
+from pybliometrics.scopus import AbstractRetrieval, AuthorRetrieval
 
 def get_author_from_scopus(doi=None, scopus_id=None):
     """
@@ -503,21 +514,35 @@ def get_author_from_scopus(doi=None, scopus_id=None):
     """
     try:
         if doi:
-            abstract = AbstractRetrieval(doi=doi)
+            # Si se pasa el DOI, obtenemos la información correspondiente
+            print(f"Obteniendo autor por DOI: {doi}")
+            abstract = AbstractRetrieval(doi)
         elif scopus_id:
-            abstract = AbstractRetrieval(scopus_id)
-        else:
-            return "Desconocido"
-
-        # Extraer autores
-        if abstract.authors and isinstance(abstract.authors, list):
-            first_author = abstract.authors[0].surname  # Apellido del primer autor
+            # Si se pasa el Scopus ID, obtenemos la información correspondiente
+            print(f"Obteniendo autor por Scopus ID: {scopus_id}")
+            author = AuthorRetrieval(scopus_id)
+            
+            # Retornar el nombre del autor (usualmente el primer autor)
+            first_author = author.given_name + " " + author.surname
+            print("Autor encontrado:", first_author)
             return first_author
         else:
+            print("No se proporcionó ni DOI ni Scopus ID.")
             return "Desconocido"
+
+        # Extraer autores si la respuesta es válida
+        if abstract.authors and isinstance(abstract.authors, list):
+            first_author = abstract.authors[0].surname  # Apellido del primer autor
+            print("Autor encontrado:", first_author)
+            return first_author
+        else:
+            print("No se encontraron autores.")
+            return "Desconocido"
+
     except Exception as e:
         print(f"⚠️ Error obteniendo autor desde Scopus: {e}")
         return "Desconocido"
+
 
 
 def extract_last_name(full_name):
@@ -533,34 +558,27 @@ def extract_last_name(full_name):
 
     return last_name
 
-def extract_year(date_string):
-    """
-    Extrae el año de una fecha en formato 'Mes Año' o 'YYYY-MM-DD'.
-    Si la fecha es None o vacía, devuelve 'Desconocido'.
-    """
-    if not date_string:
-        return "Desconocido"
-    
-    parts = date_string.split()  # Divide por espacios
-    year = parts[-1]  # Toma la última parte (que debería ser el año)
-
-    return year if year.isdigit() else "Desconocido"
 
 
+import networkx as nx
 
-def build_citation_graph(documents, source='None'): 
+import networkx as nx
+
+import networkx as nx
+
+def build_citation_graph(documents, source='None'):
     """
     Crea un grafo de citas a partir de los documentos, usando 'Apellido - Año' en los nodos.
     """
     G = nx.DiGraph()
-    
+
     # Diccionario para almacenar las referencias ya agregadas por su etiqueta
     nodes_set = set()
 
+    # Iterar sobre todos los documentos principales
     for doc in documents:
         print("\n🔹 Documento principal:", doc)  # ✅ Depuración
 
-        
         creator = doc.get("creator", "")
         doi = doc.get("doi", "")
         cover_display_date = doc.get("coverDisplayDate", "")
@@ -574,7 +592,7 @@ def build_citation_graph(documents, source='None'):
             url = f"https://www.scopus.com/record/display.uri?eid={scopus_id}"
         else:
             url = None
-       
+
         # 🔥 Obtener el número de citas
         citation_count = get_citation_count(doi, scopus_id)
 
@@ -591,11 +609,12 @@ def build_citation_graph(documents, source='None'):
 
         if url:
             if main_label not in nodes_set:
+                # Asegurarnos de que el nodo principal sea añadido con color rojo
                 G.add_node(main_label, 
                            label=main_label, 
                            title=doc.get("title", "Título desconocido"),
                            citation_count=citation_count,
-                           color="red", 
+                           color="red",  # Color rojo para documento principal
                            size=20,
                            url=url,
                            publicationName=journal_name, 
@@ -606,22 +625,32 @@ def build_citation_graph(documents, source='None'):
                            eIssn=eissn)
                 nodes_set.add(main_label)
 
-        # Procesar referencias
+        # Procesar referencias para este documento
         for ref in doc.get("ref_docs", []):
             print("\n   🔹 Referencia encontrada:", ref)  # ✅ Depuración
 
             # Intentar obtener el autor de la referencia
             ref_author = "Desconocido"
-            ref_scopus_id = ref.get("id")
-            ref_doi = ref.get("DOI")
+
+            # Comprobar si la fuente es CrossRef o Scopus y obtener el DOI correctamente
+            if source == 'crossref':
+                ref_doi = ref.get("DOI")  # CrossRef usa "DOI"
+                ref_pub_year = ref.get("year", "Desconocido")  # CrossRef usa "year"
+                ref_journal_name = ref.get("journal-title", "Revista desconocida")  # CrossRef usa "journal-title"
+                ref_title = ref.get("article-title", "Título desconocido")  # CrossRef usa "article-title"
+            else:
+                ref_doi = ref.get("doi")  # Scopus usa "doi"
+                ref_pub_date = ref.get("pub_date", "Desconocido")  # Scopus usa "pub_date"
+                ref_pub_year = str(ref_pub_date)[:4] if ref_pub_date else "Desconocido"  # Extrae el año de "pub_date"
+                ref_journal_name = ref.get("sourcetitle", "Revista desconocida")  # Scopus usa "sourcetitle"
+                ref_title = ref.get("title", "Título desconocido")  # Scopus usa "title"
+                ref_scopus_id = ref.get("id")
+
             # 🔥 Obtener citas de la referencia
             ref_citation_count = get_citation_count(ref_doi, ref_scopus_id)
 
+            # Obtener el autor dependiendo de la fuente
             ref_author = get_author_from_crossref(ref_doi) if source == 'crossref' else get_author_from_scopus(ref_doi, ref_scopus_id)
-
-            # Obtener el año de publicación de la referencia
-            ref_pub_date = ref.get("pub_date", "Desconocido")
-            ref_pub_year = str(ref_pub_date)[:4] if ref_pub_date else "Desconocido"
 
             # Etiqueta de la referencia
             ref_label = f"{ref_author} - {ref_pub_year}"
@@ -633,22 +662,19 @@ def build_citation_graph(documents, source='None'):
             else:
                 ref_url = None  # Si no tiene identificador, no agregarlo
 
-            # Obtener información de la revista de la referencia
-            ref_journal_name = ref.get("sourcetitle", "Revista desconocida")
-
             # Si no se ha agregado la referencia al grafo
             if ref_pub_year != "Desconocido" and ref_url:
                 # Verifica si la referencia ya existe
                 if ref_label not in nodes_set:
                     # Si no existe, la agrega
                     G.add_node(ref_label, 
-                               label=ref_label, 
-                               title=ref.get("title", "Título desconocido"),
-                               color="blue", 
-                               size=15,
-                               url=ref_url,
-                               citation_count=ref_citation_count,
-                               publicationName=ref_journal_name)
+                            label=ref_label, 
+                            title=ref_title,  # Usar el título correcto según la fuente
+                            color="blue",  # Color azul para referencias
+                            size=15,
+                            url=ref_url,
+                            citation_count=ref_citation_count,
+                            publicationName=ref_journal_name)
 
                     nodes_set.add(ref_label)
 
@@ -656,6 +682,10 @@ def build_citation_graph(documents, source='None'):
                 G.add_edge(main_label, ref_label)
 
     return G
+
+
+
+
 
 def plot_citation_graph(G): 
     """
@@ -724,26 +754,6 @@ def plot_citation_graph(G):
     for edge in G.edges():
         net.add_edge(edge[0], edge[1])
 
-    net.set_options('''
-    var options = {
-        "nodes": {
-            "borderWidth": 2,
-            "borderWidthSelected": 4,
-            "shape": "dot"
-        },
-        "physics": {
-            "enabled": true
-        },
-        "interaction": {
-            "hover": true,
-            "click": true
-        }
-    }
-
-    });
-    ''')
-
-
     # Guardar el grafo en un archivo HTML
     graph_path = "citation_graph.html"
     net.save_graph(graph_path)
@@ -805,7 +815,6 @@ def get_refs_crossref(query, limit=50):
         return []
 
 
-
 @app.route('/generate_citation_graph', methods=['POST'])
 def generate_citation_graph():
     """
@@ -814,7 +823,7 @@ def generate_citation_graph():
     data = request.get_json()
     query = data.get('query', '')
     source = data.get('source', 'scopus')  # ⬅️ Por defecto, usa Scopus si no se especifica
-    limit = int(data.get('limit', 4))  # Limita la cantidad de referencias
+    limit = int(data.get('limit', 10))  # Limita la cantidad de referencias
 
     if not query:
         return jsonify({"status": "error", "message": "No se proporcionó una consulta"}), 400
@@ -848,7 +857,6 @@ def generate_citation_graph():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 
 
