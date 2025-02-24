@@ -7,7 +7,7 @@ const SourceSelector = ({ selectedSources, setSelectedSources }) => {
     );
   };
 
-  const sources = ["scopus", "crossref"]; 
+  const sources = ["scopus", "crossref", "scholar"];
 
   return (
     <div className="mt-3">
@@ -17,8 +17,9 @@ const SourceSelector = ({ selectedSources, setSelectedSources }) => {
           <button
             key={source}
             type="button"
-            className={`btn btn-outline-${source === "scopus" ? "success" : "warning"} 
-              ${selectedSources.includes(source) ? "active" : ""}`}
+            className={`btn btn-outline-${
+              source === "scopus" ? "success" : source === "crossref" ? "warning" : "info"
+            } ${selectedSources.includes(source) ? "active" : ""}`}
             onClick={() => toggleSource(source)}
           >
             {source.charAt(0).toUpperCase() + source.slice(1)}

@@ -19,6 +19,7 @@ const SearcherPage = () => {
   const [selectedSources, setSelectedSources] = useState([
     "scopus",
     "crossref",
+    "scholar"
   ]);
 
   useEffect(() => {

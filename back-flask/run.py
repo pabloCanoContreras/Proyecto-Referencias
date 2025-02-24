@@ -166,7 +166,7 @@ def search_and_rank():
         tipo_busqueda = data.get('tipoBusqueda', 'title')  # Puede ser "title", "author" o "keywords"
         fecha_inicio = data.get('fechaInicio', None)
         fecha_fin = data.get('fechaFin', None)
-        sources = data.get('sources', ['scopus', 'crossref'])  # Fuentes seleccionadas
+        sources = data.get('sources', ['scopus', 'crossref', 'scholar'])  # Fuentes seleccionadas
 
         # Convertir fechas a enteros si son válidas
         try:
@@ -184,12 +184,12 @@ def search_and_rank():
         elif tipo_busqueda.lower() == "keywords":
             search_type = "keywords"
 
-        results = {"scopus": [], "crossref": []}  # Diccionario con listas separadas
+        results = {"scopus": [], "crossref": [], "scholar": []}  # Diccionario con listas separadas
 
         for source in sources:
-            if source in ['scopus', 'crossref']:
+            if source in ['scopus', 'crossref', 'scholar']:
                 articles = lit_study.search_and_rank(query=query, source=source, search_type=search_type) or []
-                print("Articulos para {source}:",articles)
+                print(f"Articulos para {source}:",articles)
 
                 filtered_articles = []  # Lista específica para cada fuente
 
@@ -286,6 +286,27 @@ def search_and_rank():
                                     "doi": doi,
                                     "source": "crossref"
                                 })
+                    
+                    elif source == "scholar":
+                        print("Bienvenido a scholar......")
+                        scholar_articles = lit_study.get_scholar_articles(query=query, search_type=search_type, limit=10)
+                        filtered_articles = []
+
+                        for article in scholar_articles:
+                            title = article.get("title", "Sin título")
+                            link = article.get("link", "No disponible")
+                            authors = ", ".join([author["name"] for author in article.get("authors", []) if isinstance(author, dict)] or ["Sin autores"])
+                            citations = article.get("citations",0)
+                            pub_year = int(article.get("year")) if article.get("year") else "Desconocido"
+
+                            filtered_articles.append({
+                                "title": title,
+                                "citation_count": citations,
+                                "publication_year": pub_year,
+                                "authors": authors,
+                                "link": link,
+                                "source": "scholar"
+                            })
 
                 # Filtrar artículos por fecha si corresponde
                 final_articles = [
@@ -631,6 +652,8 @@ def build_citation_graph(documents, source='None'):
 
             # Intentar obtener el autor de la referencia
             ref_author = "Desconocido"
+            # Definir ref_scopus_id antes del if
+            ref_scopus_id = None  
 
             # Comprobar si la fuente es CrossRef o Scopus y obtener el DOI correctamente
             if source == 'crossref':
