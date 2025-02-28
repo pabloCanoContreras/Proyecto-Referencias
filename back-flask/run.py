@@ -234,14 +234,32 @@ def search_and_rank():
                             else:
                                 pub_year = None  # Si no existe, asignar None
 
-                            # Obtener AUIDs y calcular H-index
-                            author_ids = getattr(article_obj, "author_ids", "").split(";") if getattr(article_obj, "author_ids", None) else []
-                            for auid in author_ids:
+                            # 🔹 Obtener lista de IDs y nombres de autores
+                        author_names_list = author_names.split(";") if author_names else []
+                        author_ids_list = getattr(article_obj, "author_ids", "").split(";") if getattr(article_obj, "author_ids", None) else []
+
+                        # 🔥 Diccionario para almacenar { author_id: { name, h_index } }
+                        author_data = {}
+
+                        # 🔹 Asegurar que los IDs correspondan con los nombres en orden
+                        for idx, author_name in enumerate(author_names_list):
+                            author_name = author_name.strip()
+                            author_id = author_ids_list[idx] if idx < len(author_ids_list) else None
+
+                            # Si hay un ID, obtenemos el H-Index
+                            if author_id:
                                 try:
-                                    author = AuthorRetrieval(auid)
-                                    h_index_info[auid] = author.h_index
+                                    author = AuthorRetrieval(author_id)
+                                    h_index = author.h_index
                                 except Exception:
-                                    h_index_info[auid] = "No disponible"
+                                    h_index = "No disponible"
+
+                                # Guardamos en el diccionario con el formato { author_id: { name, h_index } }
+                                author_data[author_id] = {
+                                    "name": author_name,
+                                    "h_index": h_index
+                                }
+
 
                             # Agregar artículo filtrado a la lista de Scopus
                             if title != 'Sin título' and author_names != 'Sin autores':
@@ -249,7 +267,7 @@ def search_and_rank():
                                     "title": title,
                                     "citation_count": citation_count,
                                     "publication_year": pub_year or "Desconocido",
-                                    "authors": author_names,
+                                    "authors": author_data,
                                     "h_index": h_index_info,
                                     "keywords": keywords,
                                     "journal_h_index": journal_h_index,
@@ -273,9 +291,9 @@ def search_and_rank():
                                 pub_date = doc.publication_date
                                 pub_year = pub_date.year if pub_date else "Desconocido"
 
-                                # Acceder a los autores
-                                authors = [author.name for author in doc.authors] if doc.authors else ["Autor desconocido"]
-                                authors_str = ", ".join(authors)
+                                # Acceder a los autores, reemplazando valores None por "Autor desconocido"
+                                authors = [author.name if author.name else "Autor desconocido" for author in doc.authors] if doc.authors else ["Autor desconocido"]
+                                authors_str = ", ".join(authors)  # Convertimos la lista en un string separado por comas
 
                                 # Agregar el artículo procesado a la lista filtrada
                                 filtered_articles.append({
@@ -286,27 +304,44 @@ def search_and_rank():
                                     "doi": doi,
                                     "source": "crossref"
                                 })
+
                     
                     elif source == "scholar":
                         print("Bienvenido a scholar......")
                         scholar_articles = lit_study.get_scholar_articles(query=query, search_type=search_type, limit=10)
+                        print("Scholar articles:", scholar_articles)
                         filtered_articles = []
 
                         for article in scholar_articles:
                             title = article.get("title", "Sin título")
                             link = article.get("link", "No disponible")
                             authors = ", ".join([author["name"] for author in article.get("authors", []) if isinstance(author, dict)] or ["Sin autores"])
-                            citations = article.get("citations",0)
+                            
+                            # Extraer h-index como un diccionario { "Autor1": h_index1, "Autor2": h_index2 }
+                            h_index_dict = article.get("h_index", {})
+                            citations = article.get("citations", 0)
                             pub_year = int(article.get("year")) if article.get("year") else "Desconocido"
+                            author_id = article.get("author_id","")
+
+                            # ✅ Extraer keywords con verificación de tipo
+                            keywords_list = []
+                            for entry in article.get("keywords", []):
+                                if isinstance(entry, dict):  # 🔥 Verifica que entry sea un diccionario antes de usar `.get()`
+                                    keywords_list.extend(entry.get("keywords", []))  # 🔥 Extrae las keywords si existen
 
                             filtered_articles.append({
                                 "title": title,
                                 "citation_count": citations,
                                 "publication_year": pub_year,
                                 "authors": authors,
+                                "h_index": h_index_dict,
+                                "keywords": keywords_list if keywords_list else ["No disponible"],  # Si está vacío, mostrar "No disponible"
                                 "link": link,
+                                "author_id": author_id,
                                 "source": "scholar"
                             })
+
+
 
                 # Filtrar artículos por fecha si corresponde
                 final_articles = [
@@ -399,90 +434,6 @@ def get_cited_by_crossref(doi):
         return response.json()["message"]["items"]
     else:
         return []
-
-
-
-def extract_relations(article_dois): 
-    """Extrae relaciones de colaboración y citas desde Scopus y CrossRef."""
-    collaborations, citations, authors_set = [], [], set()
-
-    for doi in article_dois:
-        # Intentar obtener los detalles desde Scopus primero, luego CrossRef
-        article_data = get_article_details_scopus(doi) or get_article_details_crossref(doi)
-
-        if article_data:
-            # Extraer autores desde Scopus (si es que es un artículo de Scopus)
-            if "scopus" in article_data.get("source", "").lower():
-                authors = article_data.get("authors", [])
-                if isinstance(authors, list):  # Verificar que sea una lista
-                    author_names = [author.get("full_name", "Autor desconocido") for author in authors if isinstance(author, dict) and "full_name" in author]
-                    authors_set.update(author_names)
-                else:
-                    author_names = []  # Si los autores no son una lista, asignar una lista vacía
-
-            # Extraer autores desde CrossRef
-            else:
-                authors = article_data.get("author", [])
-                if isinstance(authors, list):  # Verificar que sea una lista
-                    author_names = [author["given"] + " " + author["family"] for author in authors if "given" in author and "family" in author]
-                    authors_set.update(author_names)
-                else:
-                    author_names = []  # Si no es una lista, asignar una lista vacía
-
-            # Relaciones de colaboración
-            for i in range(len(author_names)):
-                for j in range(i + 1, len(author_names)):
-                    collaborations.append([author_names[i], author_names[j]])
-
-            # Obtener citas desde Scopus primero, luego CrossRef
-            cited_by_articles = get_cited_by_scopus(doi) or get_cited_by_crossref(doi)
-
-            for cited_article in cited_by_articles:
-                citing_authors = cited_article.get("author", [])
-
-                # Verificar que citing_authors sea una lista y cada uno sea un diccionario con "given" y "family"
-                if isinstance(citing_authors, list):
-                    citing_author_names = [
-                        f"{author['given']} {author['family']}"
-                        for author in citing_authors
-                        if isinstance(author, dict) and "given" in author and "family" in author
-                    ]
-                else:
-                    citing_author_names = []  # Si no es una lista, asignar una lista vacía
-
-                for author in author_names:
-                    for citing_author in citing_author_names:
-                        citations.append([citing_author, author])
-
-    return collaborations, citations, authors_set
-
-
-
-
-@app.route("/export_gephi", methods=["POST"])
-def export_to_gephi():
-    """Exporta datos a CSV para Gephi."""
-    data = request.json
-    dois = data.get("dois", [])
-    if not dois:
-        return jsonify({"error": "No se enviaron DOIs"}), 400
-
-    collaborations, citations, authors_set = extract_relations(dois)
-
-    df_nodes = pd.DataFrame(list(authors_set), columns=["Label"])
-    df_nodes["Id"] = df_nodes.index
-    author_to_id = {row["Label"]: row["Id"] for _, row in df_nodes.iterrows()}
-
-    df_edges = pd.DataFrame(
-        [[author_to_id[a], author_to_id[b], "Undirected", 1] for a, b in collaborations] +
-        [[author_to_id[a], author_to_id[b], "Directed", 1] for a, b in citations],
-        columns=["Source", "Target", "Type", "Weight"]
-    )
-
-    df_nodes.to_csv("nodes.csv", index=False)
-    df_edges.to_csv("edges.csv", index=False)
-
-    return jsonify({"message": "Archivos generados correctamente"}), 200
 
 
 
@@ -823,9 +774,17 @@ def get_refs_crossref(query, limit=50):
 
         documents = []
         for item in data.get("message", {}).get("items", []):
+            # 🛠 Manejo robusto de los autores
+            authors = item.get("author", [])
+            if authors:
+                first_author = authors[0]
+                creator = first_author.get("family") or first_author.get("name", "Desconocido")
+            else:
+                creator = "Desconocido"
+
             documents.append({
                 "title": item.get("title", ["Título desconocido"])[0],
-                "creator": item.get("author", [{}])[0].get("family", "Desconocido"),
+                "creator": creator,
                 "doi": item.get("DOI", ""),
                 "coverDisplayDate": extract_year(item.get("issued", {}).get("date-parts", [[None]])),
                 "publicationName": item.get("container-title", ["Revista desconocida"])[0],
@@ -838,6 +797,7 @@ def get_refs_crossref(query, limit=50):
         return []
 
 
+
 @app.route('/generate_citation_graph', methods=['POST'])
 def generate_citation_graph():
     """
@@ -846,7 +806,7 @@ def generate_citation_graph():
     data = request.get_json()
     query = data.get('query', '')
     source = data.get('source', 'scopus')  # ⬅️ Por defecto, usa Scopus si no se especifica
-    limit = int(data.get('limit', 10))  # Limita la cantidad de referencias
+    limit = int(data.get('limit', 4))  # Limita la cantidad de referencias
 
     if not query:
         return jsonify({"status": "error", "message": "No se proporcionó una consulta"}), 400

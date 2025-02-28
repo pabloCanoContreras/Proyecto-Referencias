@@ -1,7 +1,6 @@
 import { makeStyles } from '@material-ui/core/styles';
 import ClearIcon from "@mui/icons-material/Clear";
 import SearchIcon from "@mui/icons-material/Search";
-import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -16,7 +15,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import PropTypes from "prop-types";
 import React, { useState } from "react";
-import { FaDownload, FaProjectDiagram } from "react-icons/fa";
+import { FaDownload } from "react-icons/fa";
 
 function escapeRegExp(value) {
   return value.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -85,24 +84,7 @@ const ResultsTable = ({ results }) => {
     });
   };
 
-  const exportGephi = async (source, dois) => {
-    try {
-      const response = await fetch("http://localhost:5000/export_gephi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({source, dois }),
-      });
-  
-      const data = await response.json();
-      if (data.message) {
-        alert("Exportación completada. Revisa los archivos nodes.csv y edges.csv.");
-      } else {
-        alert("Error al exportar a Gephi.");
-      }
-    } catch (error) {
-      console.error("Error exportando a Gephi:", error);
-    }
-  };
+
   
 
   const generateCSV = (data, source) => {
@@ -303,35 +285,68 @@ const ResultsTable = ({ results }) => {
                           <TableCell>
                           <TableCell>
                           <TableCell>
-                              {article.authors && (
-                                <>
-                                  {article.authors.split(",").map((author, idx) => {
-                                    // Extraer los datos basados en si es Scopus o CrossRef
-                                    if (source === "scopus" && typeof article.h_index === "object") {
-                                      const hIndexEntries = Object.entries(article.h_index);
-                                      const [authorId, hIndex] = hIndexEntries[idx] || [null, "N/A"];
+                                {article.authors && typeof article.authors === "object" ? (
+                                  <>
+                                    {Object.entries(article.authors).map(([authorId, authorData], idx) => (
+                                      <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                                        <span>{authorData.name}</span>
+                                        {authorId ? (
+                                          <a
+                                            href={`https://www.scopus.com/authid/detail.uri?authorId=${authorId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ textDecoration: "none", color: "blue" }}
+                                          >
+                                            {authorData.h_index}
+                                          </a>
+                                        ) : (
+                                          <span style={{ fontSize: "0.9rem", color: "gray" }}>{authorData.h_index}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </>
+                                ) : source === "scholar" && typeof article.h_index === "object" ? (
+                                  <>
+                                    {article.authors.split(",").map((author, idx, arr) => {
+                                      const trimmedAuthor = author.trim();
+                                      const isLastAuthor = idx === arr.length - 1;
+                                      const authorId = article.author_id;
+                                      const hIndex = article.h_index[trimmedAuthor] || "No disponible";
+
                                       return (
                                         <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                                          <span>{author.trim()}</span>
-                                          {authorId && (
-                                            <a href={`https://www.scopus.com/authid/detail.uri?authorId=${authorId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "blue" }}>
+                                          <span>{trimmedAuthor}</span>
+                                          {authorId && (arr.length === 1 || isLastAuthor) ? (
+                                            <a
+                                              href={`https://scholar.google.com/citations?user=${authorId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{ textDecoration: "none", color: "blue" }}
+                                            >
                                               {hIndex}
                                             </a>
+                                          ) : (
+                                            <span style={{ fontSize: "0.9rem", color: "gray" }}>{hIndex}</span>
                                           )}
                                         </div>
                                       );
-                                    } else {
-                                      // Mostrar solo los autores para CrossRef (sin H-Index)
-                                      return (
+                                    })}
+                                  </>
+                                   ) : source === "crossref" ? (
+                                    <>
+                                      {article.authors.split(",").map((author, idx) => (
                                         <div key={idx} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
                                           <span>{author.trim()}</span>
                                         </div>
-                                      );
-                                    }
-                                  })}
-                                </>
-                              ) || "Sin autores"}
-                            </TableCell>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    "Sin autores"
+                                  )}
+                              </TableCell>
+
+
+
                           </TableCell>
                           </TableCell>
                           <TableCell>{article.keywords || "No disponibles"}</TableCell>
@@ -410,16 +425,6 @@ const ResultsTable = ({ results }) => {
               >
                 <FaDownload size={20} />
               </button>
-             
-              <Button
-            color="secondary"
-            size="small"
-            startIcon={<FaProjectDiagram />}
-            onClick={() => exportGephi(source, uniqueRows.map(article => article.doi))}
-            >
-            Exportar {source.toUpperCase()} a Gephi
-            </Button>
-
             </div>
             {citationGraph && (
               <div style={{ position: "fixed", top: tooltipPosition.top, left: tooltipPosition.left, backgroundColor: "white", border: "1px solid gray", padding: "10px", boxShadow: "2px 2px 10px rgba(0,0,0,0.2)", zIndex: 1000 }}>
