@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import "./SideBar.css"; // Asegúrate de que los estilos del Sidebar estén incluidos.
 import { ButtonLink } from "./ui/ButtonLink";
 
 export function Navbar() {

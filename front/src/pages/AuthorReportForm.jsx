@@ -1,36 +1,43 @@
-import axios from 'axios';
-import React, { useState } from 'react';
+import React, { useReducer } from 'react';
+import { fetchAuthorIds, generateReport } from '../api/api.js';
+
+const initialState = {
+  authorName: '',
+  maxResults: 1,
+  loading: false,
+  error: null,
+};
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET_AUTHOR_NAME':
+      return { ...state, authorName: action.payload };
+    case 'SET_MAX_RESULTS':
+      return { ...state, maxResults: action.payload };
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload };
+    default:
+      return state;
+  }
+}
 
 function AuthorReportForm() {
-  const [authorName, setAuthorName] = useState('');
-  const [maxResults, setMaxResults] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [state, dispatch] = useReducer(reducer, initialState);
 
   const handleGenerateReport = async () => {
-    setLoading(true);
-    setError(null);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
       // Paso 1: Obtener los IDs del autor
-      const eidResponse = await axios.get('http://localhost:5000/author_eid', {
-        params: { author_name: authorName, max_results: maxResults },
-      });
+      const authorIds = await fetchAuthorIds(state.authorName, state.maxResults);
+      if (authorIds.length === 0) throw new Error('No se encontraron IDs para el autor.');
 
-      const authorIds = eidResponse.data.author_ids || [];
-      if (authorIds.length === 0) {
-        throw new Error('No se encontraron IDs para el autor.');
-      }
-
-      // Paso 2: Generar el reporte
-      const reportResponse = await axios.post(
-        'http://localhost:5000/generate_report',
-        { author_name: authorName, author_ids: authorIds, max_results: maxResults },
-        { responseType: 'blob' }
-      );
-
-      // Descargar el archivo generado
-      const sanitizedAuthorName = authorName.replace(/[^a-zA-Z0-9]/g, '_');
+      // Paso 2: Generar y descargar el reporte
+      const reportResponse = await generateReport(state.authorName, authorIds, state.maxResults);
+      const sanitizedAuthorName = state.authorName.replace(/[^a-zA-Z0-9]/g, '_');
       const url = window.URL.createObjectURL(new Blob([reportResponse.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -39,10 +46,10 @@ function AuthorReportForm() {
       link.click();
       link.remove();
     } catch (error) {
-      setError('Error al generar el reporte. Por favor, inténtalo de nuevo.');
+      dispatch({ type: 'SET_ERROR', payload: 'Error al generar el reporte. Inténtalo de nuevo.' });
       console.error('Error:', error);
     } finally {
-      setLoading(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
@@ -66,8 +73,8 @@ function AuthorReportForm() {
                 type="text"
                 id="authorName"
                 className="form-control border-primary"
-                value={authorName}
-                onChange={(e) => setAuthorName(e.target.value)}
+                value={state.authorName}
+                onChange={(e) => dispatch({ type: 'SET_AUTHOR_NAME', payload: e.target.value })}
                 placeholder="Introduce el nombre del autor"
                 required
               />
@@ -82,8 +89,8 @@ function AuthorReportForm() {
                 type="number"
                 id="maxResults"
                 className="form-control border-primary"
-                value={maxResults}
-                onChange={(e) => setMaxResults(parseInt(e.target.value, 10))}
+                value={state.maxResults}
+                onChange={(e) => dispatch({ type: 'SET_MAX_RESULTS', payload: parseInt(e.target.value, 10) })}
                 placeholder="Máx resultados"
                 min="1"
                 required
@@ -94,10 +101,10 @@ function AuthorReportForm() {
           <div className="text-center mt-4">
             <button
               type="submit"
-              className={`btn btn-primary w-50 ${loading ? 'disabled' : ''}`}
-              disabled={loading}
+              className={`btn btn-primary w-50 ${state.loading ? 'disabled' : ''}`}
+              disabled={state.loading}
             >
-              {loading ? (
+              {state.loading ? (
                 <>
                   <span className="spinner-border spinner-border-sm me-2"></span>
                   Procesando...
@@ -109,9 +116,9 @@ function AuthorReportForm() {
           </div>
         </form>
 
-        {error && (
+        {state.error && (
           <div className="alert alert-danger mt-4 text-center" role="alert">
-            {error}
+            {state.error}
           </div>
         )}
       </div>

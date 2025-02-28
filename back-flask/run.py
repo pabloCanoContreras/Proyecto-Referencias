@@ -534,10 +534,6 @@ def extract_last_name(full_name):
 
 import networkx as nx
 
-import networkx as nx
-
-import networkx as nx
-
 def build_citation_graph(documents, source='None'):
     """
     Crea un grafo de citas a partir de los documentos, usando 'Apellido - Año' en los nodos.

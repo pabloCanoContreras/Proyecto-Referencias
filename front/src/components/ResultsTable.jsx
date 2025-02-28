@@ -229,7 +229,7 @@ const ResultsTable = ({ results }) => {
 
         return (
           <div key={source} className="mb-5" style={{ position: "relative" }}>
-            <Typography variant="h5" className={`text-uppercase text-white p-3 bg-${source === "scopus" ? "success" : "warning"}`}>
+            <Typography variant="h5" className={`text-uppercase text-white p-3 bg-${source === "scopus" ? "success" : source === "crossref" ? "warning" : "info"}`}>
               {source.toUpperCase()}
             </Typography>
             <Paper elevation={3}>

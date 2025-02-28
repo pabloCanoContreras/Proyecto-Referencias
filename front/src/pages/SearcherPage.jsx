@@ -1,5 +1,6 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import React, { useEffect, useState } from "react";
+import { searchAndRank } from "../api/api";
 import CircularProgressWithLabel from "../components/CircularProgress";
 import ResultsTable from "../components/ResultsTable";
 import SearchForm from "../components/SearchForm";
@@ -14,68 +15,48 @@ const SearcherPage = () => {
     endYear: "",
   });
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0); // Estado para el progreso
+  const [progress, setProgress] = useState(0);
   const [results, setResults] = useState({});
-  const [selectedSources, setSelectedSources] = useState([
-    "scopus",
-    "crossref",
-    "scholar"
-  ]);
+  const [selectedSources, setSelectedSources] = useState(["scopus", "crossref", "scholar"]);
 
   useEffect(() => {
     let interval;
     if (loading) {
+      setProgress(0);
       interval = setInterval(() => {
-        setProgress((prev) => {
-          // El progreso sube, pero no supera el 90% hasta que la API responda
-          const nextValue = prev + 10;
-          return nextValue < 90 ? nextValue : 90;
-        });
+        setProgress((prev) => (prev < 90 ? prev + 10 : 90));
       }, 500);
     } else {
-      // Si loading es false, el progreso vuelve a 0
-      setProgress(0);
+      clearInterval(interval);
+      setTimeout(() => setProgress(0), 500);
     }
-    return () => clearInterval(interval); // Limpia el intervalo al desmontar o cuando loading cambia
+    return () => clearInterval(interval);
   }, [loading]);
 
   const handleSearch = async () => {
     setLoading(true);
-    setProgress(0); // Reinicia el progreso
     try {
-      const response = await fetch("http://localhost:5000/search_and_rank", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          busqueda: params.query,
-          tipoBusqueda: params.searchType,
-          fechaInicio: params.startYear ? parseInt(params.startYear, 10) : null,
-          fechaFin: params.endYear ? parseInt(params.endYear, 10) : null,
-          sources: selectedSources,
-        }),
+      const data = await searchAndRank({
+        query: params.query,
+        searchType: params.searchType,
+        startYear: params.startYear,
+        endYear: params.endYear,
+        sources: selectedSources,
       });
 
-      const data = await response.json();
-
       if (data.error) {
-        alert(`Error: ${data.error}`);
+        console.error(`Error en la búsqueda: ${data.error}`);
         setResults({});
       } else {
         const validResults = selectedSources.reduce((acc, source) => {
           acc[source] = Array.isArray(data[source]) ? data[source] : [];
           return acc;
         }, {});
-        console.log("Datos recibidos del backend:", data);
-
         setResults(validResults);
       }
-    } catch (error) {
-      console.error("Error en la búsqueda avanzada:", error);
     } finally {
-      setProgress(100); // Completa el progreso al finalizar
-      setTimeout(() => setLoading(false), 500); // Da un pequeño margen para mostrar 100%
+      setProgress(100);
+      setTimeout(() => setLoading(false), 500);
     }
   };
 
@@ -83,31 +64,14 @@ const SearcherPage = () => {
     <div className="container mt-5">
       <div className="card shadow-sm p-4">
         <h3 className="mb-4 text-center">Búsqueda</h3>
-
-        {/* Usar SearchForm para manejar el formulario */}
-        <SearchForm
-          params={params}
-          setParams={setParams}
-          onSearch={handleSearch}
-          loading={loading}
-        />
-
-        {/* Usar SourceSelector para manejar las fuentes */}
-        <SourceSelector
-          selectedSources={selectedSources}
-          setSelectedSources={setSelectedSources}
-        />
+        <SearchForm params={params} setParams={setParams} onSearch={handleSearch} loading={loading} />
+        <SourceSelector selectedSources={selectedSources} setSelectedSources={setSelectedSources} />
       </div>
 
-      {/* Mostrar progreso de carga o los resultados */}
       <div className="mt-4 text-center">
-        {loading ? (
-          <CircularProgressWithLabel value={progress} />
-        ) : (
-          <ResultsTable results={results} />
-        )}
+        {loading ? <CircularProgressWithLabel value={progress} /> : <ResultsTable results={results} />}
       </div>
-      {/* Nuevo buscador para generar el informe de impacto de autores */}
+
       <div className="mt-5">
         <AuthorReportForm />
       </div>
