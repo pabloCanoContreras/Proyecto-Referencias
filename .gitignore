@@ -14,16 +14,21 @@ back-flask/*.scopus
 back-flask/config.py
 back-flask/app/*
 back-flask/app
-back-flask/gephi/*
-back-flask/gephi
+
 back-flask/impacto-informe/*.csv
 back-flask/impacto-informe/*
 back-flask/impacto-informe
-back-flask/mapas
+
+back-flask/mapas/__pycache__
+back-flask/mapas/__init__.py
+
+back-flask/ranking/.crossref.bak
+back-flask/ranking/.crossref.dir
+back-flask/ranking/.crossref.dat
+back-flask/ranking/__pycache__
+
 back-flask/__pycache__
 back-flask/.venv
-back-flask/ranking
-back-flask/requirements.txt
 back-flask/.*.*
 
 # Front
@@ -31,8 +36,6 @@ front/node_modules
 
 
 # Src
-
-
 
 
 node_modules
